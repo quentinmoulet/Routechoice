@@ -1,6 +1,7 @@
 // Service worker — coquille hors-ligne. L'analyse tourne dans le navigateur, donc
 // l'app marche sans réseau ; seuls Livelox (/api/*) et le partage requièrent le net.
-const CACHE = 'routechoice-v1';
+// HTML : réseau d'abord (pour toujours avoir la dernière version), cache en repli.
+const CACHE = 'routechoice-v2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -13,17 +14,27 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
-  // API et fonctions → toujours réseau (jamais de cache)
-  if (u.pathname.startsWith('/api/') || u.pathname.includes('/.netlify/')) return;
+  if (u.pathname.startsWith('/api/') || u.pathname.includes('/.netlify/')) return; // jamais de cache
   if (e.request.method !== 'GET') return;
-  // coquille : cache d'abord, réseau en repli (et mise en cache opportuniste)
+  const isDoc = e.request.mode === 'navigate' || e.request.destination === 'document'
+    || u.pathname === '/' || u.pathname.endsWith('/index.html');
+  if (isDoc) {
+    // réseau d'abord → on voit les mises à jour ; cache en repli (hors-ligne)
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        const cp = resp.clone(); caches.open(CACHE).then(c => c.put('./index.html', cp));
+        return resp;
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+  // autres ressources même-origine (icône, manifeste) → cache d'abord
   e.respondWith(
     caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
       if (resp && resp.ok && u.origin === location.origin) {
-        const cp = resp.clone();
-        caches.open(CACHE).then(c => c.put(e.request, cp));
+        const cp = resp.clone(); caches.open(CACHE).then(c => c.put(e.request, cp));
       }
       return resp;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => r))
   );
 });

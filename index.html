@@ -89,6 +89,8 @@ body{background:var(--bg);color:var(--tx);font-family:var(--mo);font-size:14px;o
 .chip .del{color:var(--re);font-size:13px;opacity:.7;margin-left:2px}
 .chip .del:hover{opacity:1}
 .manualrow{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mu);flex-wrap:wrap}
+#total-recap{margin-left:auto;font-size:12px;font-weight:800;color:var(--ac2);
+  background:#fff4ec;border:1px solid #ffd9bd;border-radius:8px;padding:5px 10px}
 .minibtn{padding:7px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--bg3);
   color:var(--tx);font-family:var(--mo);font-size:11px;cursor:pointer}
 .minibtn:hover{border-color:var(--ac)}
@@ -184,6 +186,7 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
         <button class="minibtn p" onclick="validateAddChoice()">Valider</button>
         <button class="minibtn" onclick="cancelAddChoice()">Annuler</button>
       </span>
+      <span id="total-recap" style="display:none"></span>
     </div>
   </div>
 </div>
@@ -335,7 +338,7 @@ let manualMode=false, manualPts=[];            // ajout d'un choix manuel par po
 let brushStrokes=[], _lastBrush=null;          // historique pinceau (pour le partage)
 let eventClassId=null, pendingBrush=null;      // partage : id de classe Livelox / pinceau à rejouer
 let courseMode=false, coursePts=[], selPt=-1;  // tracé manuel du parcours
-let _courseDrag=false,_courseDownPos=null,_courseMoved=0,_touch=null;
+let _courseDrag=false,_courseDownPos=null,_courseMoved=0,_touch=null,_md=null;
 const COLORS=['#5b8cff','#ff6b6b','#4ade80','#fbbf24','#a78bfa','#fb923c','#22d3ee','#f472b6'];
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -389,39 +392,45 @@ MA.addEventListener('wheel',e=>{
   panX=mx-(mx-panX)*d;panY=my-(my-panY)*d;
   zoom=Math.max(0.04,Math.min(40,zoom*d));render();
 },{passive:false});
+// Souris : glisser (clic gauche maintenu) = déplacer la carte ; clic simple (sans
+// bouger) = placer un point selon le mode (échelle A/B, choix manuel, parcours).
 MA.addEventListener('mousedown',e=>{
+  if(!srcImg)return;
   if(e.button===1||(e.button===0&&e.altKey)){panning=true;panS={x:e.clientX-panX,y:e.clientY-panY};MA.style.cursor='grab';e.preventDefault();return;}
-  if(e.button===0&&courseMode){
-    const p=s2i(e.clientX,e.clientY),hit=nearestCoursePt(p);
-    if(hit>=0){selPt=hit;_courseDrag=true;}else{_courseDrag=false;_courseDownPos=p;}
-    _courseMoved=0;render();e.preventDefault();return;
-  }
-  if(e.button===0&&brushMode!=='off'&&grid){brushing=true;paintAt(s2i(e.clientX,e.clientY));e.preventDefault();}
+  if(e.button!==0)return;
+  const p=s2i(e.clientX,e.clientY);
+  if(courseMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_courseDrag=true;_md={moved:0,p};render();e.preventDefault();return;}}
+  if(brushMode!=='off'&&grid&&!courseMode){brushing=true;paintAt(p);e.preventDefault();return;}
+  _md={x:e.clientX,y:e.clientY,px:panX,py:panY,moved:0,p,pan:true};
+  e.preventDefault();
 });
 document.addEventListener('mousemove',e=>{
-  if(panning){panX=e.clientX-panS.x;panY=e.clientY-panS.y;render();}
-  if(brushing)paintAt(s2i(e.clientX,e.clientY));
-  if(courseMode&&e.buttons===1){_courseMoved+=Math.abs(e.movementX)+Math.abs(e.movementY);if(_courseDrag)moveSelPt(s2i(e.clientX,e.clientY));}
+  if(panning){panX=e.clientX-panS.x;panY=e.clientY-panS.y;render();return;}
+  if(brushing){paintAt(s2i(e.clientX,e.clientY));return;}
+  if(_md){
+    _md.moved+=Math.abs(e.movementX)+Math.abs(e.movementY);
+    if(_courseDrag){moveSelPt(s2i(e.clientX,e.clientY));return;}
+    if(_md.pan&&_md.moved>5){panX=_md.px+(e.clientX-_md.x);panY=_md.py+(e.clientY-_md.y);render();}
+  }
 });
 document.addEventListener('mouseup',()=>{
-  panning=false;MA.style.cursor='crosshair';
+  if(panning){panning=false;MA.style.cursor='crosshair';}
   if(brushing){brushing=false;if(brushDirty)rebuildAfterBrush();}
-  if(courseMode){if(!_courseDrag&&_courseDownPos&&_courseMoved<6)addPt(_courseDownPos);_courseDrag=false;_courseDownPos=null;_courseMoved=0;}
-});
-MA.addEventListener('click',e=>{
-  if(!srcImg||panning||e.altKey||courseMode)return;
-  if(manualMode){
-    manualPts.push(s2i(e.clientX,e.clientY));
-    $('i-manpts').textContent=manualPts.length;
-    render();return;
+  if(_md){
+    if(_courseDrag)_courseDrag=false;
+    else if(_md.moved<5){if(courseMode)addPt(_md.p);else handleTap(_md.p);}
+    _md=null;
   }
+});
+// placer un point selon le mode courant (échelle A/B ou choix manuel)
+function handleTap(p){
+  if(manualMode){manualPts.push(p);$('i-manpts').textContent=manualPts.length;render();return;}
   if(mode==='cal'){
-    const p=s2i(e.clientX,e.clientY);
     if(!calA){calA=p;log(`Calibration A (${p.x},${p.y})`,'in');}
     else{calB=p;const d=Math.hypot(calB.x-calA.x,calB.y-calA.y);$('i-calpx').textContent=d.toFixed(1)+' px';log(`Calibration B (${p.x},${p.y}) — ${d.toFixed(1)}px`,'in');setMode('nav');}
     render();
   }
-});
+}
 
 // ─── Tactile (mobile) : 1 doigt = pan / déplacer poste / pinceau ; 2 doigts = zoom ───
 MA.addEventListener('touchstart',e=>{
@@ -455,7 +464,7 @@ MA.addEventListener('touchmove',e=>{
 },{passive:false});
 MA.addEventListener('touchend',e=>{
   if(_touch){
-    if(_touch.mode==='pan'&&_touch.moved<10&&courseMode)addPt(_touch.downP);
+    if(_touch.mode==='pan'&&_touch.moved<10){if(courseMode)addPt(_touch.downP);else handleTap(_touch.downP);}
     if(_touch.mode==='brush'){brushing=false;if(brushDirty)rebuildAfterBrush();}
   }
   _touch=e.touches.length?null:null;  // on réinitialise dès qu'un doigt se lève
@@ -553,7 +562,7 @@ function drawCoursePts(){
   const n=coursePts.length;
   if(n>1){ctx.strokeStyle='rgba(230,52,153,.6)';ctx.lineWidth=Math.max(1.5,2*zoom);ctx.beginPath();coursePts.forEach((p,i)=>{const s=i2s(p.x,p.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});ctx.stroke();}
   coursePts.forEach((p,i)=>{
-    const s=i2s(p.x,p.y),r=Math.max(7,10*zoom)*3.5,sel=i===selPt;
+    const s=i2s(p.x,p.y),r=Math.max(7,10*zoom)*4.66,sel=i===selPt;
     ctx.beginPath();
     if(i===0){ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();}
     else if(i===n-1){ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);}
@@ -1390,12 +1399,30 @@ function currentLeg(){
 }
 function prevLeg(){if(legIdx>0){legIdx--;updateLegUI();focusLeg();}}
 function nextLeg(){if(legIdx<controls.length-2){legIdx++;updateLegUI();focusLeg();}}
+// distance totale du parcours en sommant, par tronçon, le choix le plus court
+// (ou la ligne droite si ce tronçon n'a pas été analysé)
+function totalCourseDistance(){
+  let tot=0;
+  for(let i=0;i<controls.length-1;i++){
+    const res=legResults[i];
+    if(res&&res.length)tot+=px2m(Math.min(...res.map(r=>r.distPx)));
+    else{const a=controls[i],b=controls[i+1];tot+=px2m(Math.hypot(b.x-a.x,b.y-a.y));}
+  }
+  return tot;
+}
 function updateLegUI(){
   const lg=currentLeg();
-  if(!lg){$('leg-cur').textContent=controls.length?'1 poste':'—';$('i-straight').textContent='—';$('btn-analyze').disabled=true;$('btn-analyze-all').disabled=true;return;}
+  const rec=$('total-recap');
+  if(!lg){$('leg-cur').textContent=controls.length?'1 poste':'—';$('i-straight').textContent='—';$('btn-analyze').disabled=true;$('btn-analyze-all').disabled=true;if(rec)rec.style.display='none';return;}
   $('leg-cur').textContent=`${lg.name}  (${legIdx+1}/${controls.length-1})`;
   $('i-straight').textContent=px2m(Math.hypot(lg.p2.x-lg.p1.x,lg.p2.y-lg.p1.y)).toFixed(0)+' m';
   $('btn-analyze').disabled=!grid;$('btn-analyze-all').disabled=!grid;
+  // sur le dernier tronçon (vers l'arrivée) : récap distance totale
+  if(rec){
+    const isLast=legIdx===controls.length-2;
+    rec.style.display=isLast?'inline-block':'none';
+    if(isLast)rec.textContent='Total parcours (plus courts) : '+totalCourseDistance().toFixed(0)+' m';
+  }
   renderChoices();
 }
 function renderChoices(){
@@ -1469,7 +1496,7 @@ function render(){
   if(courseMode)drawCoursePts();
 }
 function drawControl(c,i,hl){
-  const s=i2s(c.x,c.y),r=Math.max(4,7*zoom)*3.5;
+  const s=i2s(c.x,c.y),r=Math.max(4,7*zoom)*4.66;
   ctx.beginPath();
   if(c.type===0){ // départ = triangle
     ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();
