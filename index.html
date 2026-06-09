@@ -267,6 +267,7 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
 <div class="panel" id="panel-export">
   <h3>Export PDF</h3>
   <div class="hint">Génère une page par tronçon (capture de la carte avec les choix). Analyse d'abord les tronçons voulus (« Tout » dans le bandeau du bas). Dans la fenêtre d'impression, choisis « Enregistrer au format PDF ».</div>
+  <button class="bigbtn" id="btn-hidecourse" onclick="toggleCourseVisible()">Parcours sur la carte : visible</button>
   <button class="bigbtn p" onclick="exportPdf()">Exporter en PDF</button>
 </div>
 
@@ -305,24 +306,26 @@ const PAL = {
   LIGHTGREEN:[202,237,181], MEDIUMGREEN:[157,223,123], LIGHTBLUE:[184,223,238],
   NORTHLINES:[79,173,211], OLIVE:[162,170,60], DARKBLUE:[94,164,212],
   BLACK:[5,5,5], DARKGREEN:[107,210,68], BLACKGREEN:[58,90,24],
-  PURPLE:[230,52,153], LIGHTPURPLE:[198,138,246], DARKGRAY:[104,104,104],
+  DARKGRAY:[104,104,104],
+  // bâtiment = 50% noir CMYK, rendu ~gris 146 sur les cartes Livelox (infranchissable)
+  GRAY50:[146,146,146],
 };
 const PAL_KEYS = Object.keys(PAL);
 const PASSABLE  = new Set(['URBANSTREET','LIGHTGRAY','YELLOW','ROUGHOPEN','WHITE','LIGHTGREEN','MEDIUMGREEN','DARKGREEN','LIGHTBLUE']);
-const IMPASSABLE= new Set(['OLIVE','BLACK','BLACKGREEN','DARKGRAY','DARKBLUE']);
-// "Surimpressions" transparentes → traitées comme "inconnu" et reclassées d'après
-// le terrain voisin le plus proche (on regarde "dessous") :
-//  - violet : cercles/traits/numéros du parcours
-//  - brun   : courbes de niveau (sur un bâtiment → bloqué ; sur terrain ouvert →
-//             ouvert ; les gaps étroits entre courbes restent préservés)
-//  - lignes Nord : lignes magnétiques de référence
-const OVERPRINT = new Set(['PURPLE','LIGHTPURPLE','BROWN','NORTHLINES']);
+const IMPASSABLE= new Set(['OLIVE','BLACK','BLACKGREEN','DARKGRAY','DARKBLUE','GRAY50']);
+// Surimpressions transparentes (nearest-palette) → reclassées d'après le voisin :
+//  - brun : courbes de niveau ;  - lignes Nord : lignes magnétiques.
+// Le magenta du parcours et le violet OOB/barrière sont gérés à part, PAR TEINTE
+// (voir buildGrid) : magenta(~326°)=parcours transparent ; violet(~275°)=infranchissable
+// selon l'épaisseur (fin 0,4 mm franchissable, épais ≥0,7 mm bloqué).
+const OVERPRINT = new Set(['BROWN','NORTHLINES']);
 
 // ════════════════════════════════════════════════════════════════════════════
 //  État global
 // ════════════════════════════════════════════════════════════════════════════
 let srcImg=null, srcCvs=null, srcCtx=null;   // image carte
 let mpp=1;                                     // mètres par pixel
+let mapScale=4000;                             // dénominateur d'échelle (1:N) — pour convertir mm papier → px
 let controls=[];                               // [{x,y,code,type}]  en pixels image
 let legIdx=0;                                  // tronçon courant
 let ascale=1;                                  // facteur d'analyse (grille = image × ascale)
@@ -347,6 +350,7 @@ const COLORS=['#5b8cff','#ff6b6b','#4ade80','#fbbf24','#a78bfa','#fb923c','#22d3
 const dc=$('dc'), ctx=dc.getContext('2d'), MA=$('MA');
 let zoom=1,panX=0,panY=0,panning=false,panS={x:0,y:0};
 let viewRot=0, northUp=false;                   // rotation de la vue ; false = axe du tronçon vers le haut
+let showCourse=true;                            // afficher les cercles/traits du parcours (sinon : juste les choix)
 function resize(){dc.width=MA.clientWidth;dc.height=MA.clientHeight;}
 window.addEventListener('resize',()=>{if(srcImg){resize();render();}});
 // le canvas suit la taille de #MA (qui change quand le bandeau bas grandit/rétrécit)
@@ -562,12 +566,13 @@ function drawCoursePts(){
   const n=coursePts.length;
   if(n>1){ctx.strokeStyle='rgba(230,52,153,.6)';ctx.lineWidth=Math.max(1.5,2*zoom);ctx.beginPath();coursePts.forEach((p,i)=>{const s=i2s(p.x,p.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});ctx.stroke();}
   coursePts.forEach((p,i)=>{
-    const s=i2s(p.x,p.y),r=Math.max(7,10*zoom)*4.66,sel=i===selPt;
+    const s=i2s(p.x,p.y),sel=i===selPt;
+    let r=Math.max(7,10*zoom)*5.0; if(i===0)r*=1.10; else if(i===n-1)r*=0.85;
     ctx.beginPath();
     if(i===0){ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();}
     else if(i===n-1){ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);}
     else ctx.arc(s.x,s.y,r,0,7);
-    ctx.strokeStyle=sel?'#3d9bff':'#e63499';ctx.lineWidth=sel?Math.max(3,3.5*zoom):Math.max(2,2.5*zoom);ctx.stroke();
+    ctx.strokeStyle=sel?'#3d9bff':'#e63499';ctx.lineWidth=sel?Math.max(6,7*zoom):Math.max(4,5*zoom);ctx.stroke();
     const fs=Math.max(11,13*zoom);ctx.font=`800 ${fs}px Nunito,sans-serif`;ctx.fillStyle=sel?'#3d9bff':'#e63499';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(courseLabel(i,n),s.x,s.y-r-2);
   });
 }
@@ -648,6 +653,7 @@ function parseLivelox(d){
   }else if(d.map.resolution){
     mpp=1/d.map.resolution; $('mpp').value=mpp.toFixed(4); $('i-scalesrc').textContent='resolution';
   }
+  mapScale=d.map.mapScale||4000;
   $('src-tag').textContent='1:'+(d.map.mapScale||'?');
   // postes du premier parcours
   const course=d.courses[0];
@@ -761,15 +767,24 @@ async function tryLoadShare(){
   }catch(e){log('Partage introuvable : '+e.message,'er');stat('partage introuvable');}
 }
 
+function toggleCourseVisible(){
+  showCourse=!showCourse;
+  $('btn-hidecourse').textContent='Parcours sur la carte : '+(showCourse?'visible':'masqué');
+  render();
+}
 function exportPdf(){
   if(!srcImg||controls.length<2){log('Charge un parcours d\'abord','er');return;}
   closePanels();log('Génération du PDF…','in');
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const saveLeg=legIdx,pages=[];
   for(let i=0;i<controls.length-1;i++){
     legIdx=i;setLegRotation();fitLeg();              // oriente + cadre + rend
-    const lg=currentLeg(),res=legResults[i]||[];
-    const cap=lg.name+'  —  '+(res.length?res.map(r=>px2m(r.distPx).toFixed(0)+'m').join('  ·  '):'non analysé');
-    pages.push({img:dc.toDataURL('image/jpeg',0.92),cap});
+    const lg=currentLeg(),res=legResults[i]||[];if(res.length)recolor(res);
+    // titre : nom du tronçon + distance de chaque choix dans SA couleur
+    const dists=res.length
+      ? res.map(r=>`<span style="color:${r.color}">${px2m(r.distPx).toFixed(0)} m</span>`).join('<span style="color:#9aa7b6"> · </span>')
+      : '<span style="color:#9aa7b6">non analysé</span>';
+    pages.push({img:dc.toDataURL('image/jpeg',0.92),cap:`<b>${esc(lg.name)}</b> &nbsp; ${dists}`});
   }
   legIdx=saveLeg;setLegRotation();fitLeg();
   const w=window.open('','_blank');
@@ -777,7 +792,7 @@ function exportPdf(){
   let html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Routechoice — parcours</title>'+
     '<style>@page{size:landscape;margin:8mm}*{font-family:Nunito,Arial,sans-serif}'+
     'body{margin:0}.pg{page-break-after:always;text-align:center;padding:6mm}'+
-    '.pg:last-child{page-break-after:auto}h2{font-size:16px;margin:0 0 4mm;color:#1c2a3a}'+
+    '.pg:last-child{page-break-after:auto}h2{font-size:18px;font-weight:800;margin:0 0 4mm;color:#1c2a3a}'+
     'img{max-width:100%;max-height:165mm;border:1px solid #ccc;border-radius:6px}</style></head><body>';
   pages.forEach(p=>{html+='<div class="pg"><h2>'+p.cap+'</h2><img src="'+p.img+'"></div>';});
   html+='<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},350);}</scr'+'ipt></body></html>';
@@ -888,17 +903,45 @@ function buildGrid(openR,closeR,clearR){
   cx.drawImage(srcCvs,0,0,ow,oh,0,0,W,H);
   const data=cx.getImageData(0,0,W,H).data;
 
-  // 1. classification → lab : 1 franchissable, 2 infranchissable. Les surimpressions
-  //    (violet, brun=courbes, lignes Nord) sont "inconnu" et reclassées d'après le
-  //    pixel non-surimpression le plus proche (on regarde "dessous").
-  const lab=new Uint8Array(n), unknown=new Uint8Array(n);
+  // 1. classification → lab : 1 franchissable, 2 infranchissable.
+  //    Détection PAR TEINTE de la famille violette/magenta (robuste aux variations
+  //    de clarté) AVANT le nearest-palette :
+  //      magenta ~326° = parcours → surimpression transparente (reclassé par voisin)
+  //      violet  ~275° = OOB / barrière → candidat infranchissable (l'épaisseur décide)
+  //    Le brun (courbes) et les lignes Nord restent gérés par nearest-palette + OVERPRINT.
+  const lab=new Uint8Array(n), unknown=new Uint8Array(n), violet=new Uint8Array(n);
   for(let i=0;i<n;i++){
     const di=i<<2;
     if(data[di+3]<10){lab[i]=1;continue;}
-    const k=nearestPalette(data[di],data[di+1],data[di+2]);
+    const r=data[di],g=data[di+1],b=data[di+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b),dl=mx-mn;
+    const sat=mx?dl/mx:0;
+    // famille violette/magenta : le violet OOB est SEMI-TRANSPARENT, sa teinte/satu
+    // rendue dépend du fond → on accepte une plage large et une saturation basse.
+    if(dl>0&&mx>70&&sat>0.09){
+      let h;if(mx===r)h=(g-b)/dl;else if(mx===g)h=(b-r)/dl+2;else h=(r-g)/dl+4;h*=60;if(h<0)h+=360;
+      if(h>=250&&h<300){violet[i]=1;continue;}                 // violet (OOB/barrière)
+      else if(h>=300&&h<=350){                                  // magenta/rose
+        if(sat>0.5){unknown[i]=1;continue;}                     // saturé = parcours → transparent
+        else{violet[i]=1;continue;}                             // désaturé = violet OOB sur fond chaud
+      }
+    }
+    const k=nearestPalette(r,g,b);
     if(OVERPRINT.has(k)){unknown[i]=1;continue;}
     if(PASSABLE.has(k))lab[i]=1;else if(IMPASSABLE.has(k))lab[i]=2;
   }
+  // 2. VIOLET selon l'épaisseur — même principe que les murs noirs, mais seuil 2× :
+  //    ouverture qui RETIRE les traits fins (0,4 mm → franchissable) et GARDE les
+  //    zones/traits épais (≥0,7 mm → infranchissable). Le violet épais devient
+  //    "infranchissable connu" ; le violet fin devient "inconnu" → reclassé par les
+  //    voisins (donc une fine ligne violette dans un bâtiment = infranchissable,
+  //    sur terrain ouvert = franchissable).
+  {
+    const pxPerMm=(mapScale/1000)/gridMpp;             // px (grille) par mm papier
+    const rV=Math.max(1,Math.round((0.55*pxPerMm-1)/2)); // retire <~0,55mm (0,4→ôté, 0,7→gardé)
+    const violetThick=opening(violet,W,H,rV);
+    for(let i=0;i<n;i++)if(violet[i]){ if(violetThick[i])lab[i]=2; else unknown[i]=1; }
+  }
+  // 3. remplissage des "inconnus" (magenta, violet fin, brun, lignes-N) par le voisin connu
   {
     const q=new Int32Array(n),filled=new Uint8Array(n);let qh=0,qt=0;
     for(let i=0;i<n;i++)if(!unknown[i]){filled[i]=1;q[qt++]=i;}
@@ -909,7 +952,7 @@ function buildGrid(openR,closeR,clearR){
       if(py<H-1&&unknown[p+W]&&!filled[p+W]){filled[p+W]=1;lab[p+W]=lab[p];q[qt++]=p+W;}
     }
   }
-  // 2. masque infranchissable (brun/violet/lignes-N déjà reclassés par voisinage).
+  // 4. masque infranchissable
   const impass=new Uint8Array(n);for(let i=0;i<n;i++)if(lab[i]===2)impass[i]=1;
   //  a. OUVERTURE : retire les murs/traits FINS franchissables (escaliers, murs
   //     franchissables) en gardant les murs épais et les bâtiments.
@@ -1470,7 +1513,7 @@ function render(){
     for(const nd of graph.nodes){const s=i2s(nd.x*iv,nd.y*iv);ctx.fillRect(s.x-1,s.y-1,2,2);}
   }
   // tracé de tous les postes + lignes du parcours
-  if(controls.length){
+  if(showCourse&&controls.length){
     ctx.strokeStyle='rgba(230,52,153,.5)';ctx.lineWidth=Math.max(1,1.5*zoom);ctx.beginPath();
     controls.forEach((c,i)=>{const s=i2s(c.x,c.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
     ctx.stroke();
@@ -1481,7 +1524,7 @@ function render(){
   if(res){res.forEach(r=>drawPath(r.path,r.color,false));drawChoiceLabels(res);}
   // surbrillance tronçon courant
   const lg=currentLeg();
-  if(lg){drawControl(lg.a,legIdx,true);drawControl(lg.b,legIdx+1,true);}
+  if(showCourse&&lg){drawControl(lg.a,legIdx,true);drawControl(lg.b,legIdx+1,true);}
   // points de passage du choix manuel en cours
   if(manualMode&&lg){
     const seq=[lg.p1,...manualPts,lg.p2];
@@ -1496,14 +1539,17 @@ function render(){
   if(courseMode)drawCoursePts();
 }
 function drawControl(c,i,hl){
-  const s=i2s(c.x,c.y),r=Math.max(4,7*zoom)*4.66;
+  let r=Math.max(4,7*zoom)*5.0;
+  if(c.type===0)r*=1.10;          // départ +10%
+  else if(c.type===2)r*=0.85;     // arrivée -15%
+  const s=i2s(c.x,c.y);
   ctx.beginPath();
   if(c.type===0){ // départ = triangle
     ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();
   }else if(c.type===2){ // arrivée = double cercle
     ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);
   }else ctx.arc(s.x,s.y,r,0,7);
-  ctx.strokeStyle=hl?'#fbbf24':'#e63499';ctx.lineWidth=hl?Math.max(2,2.5*zoom):Math.max(1,1.6*zoom);ctx.stroke();
+  ctx.strokeStyle=hl?'#fbbf24':'#e63499';ctx.lineWidth=hl?Math.max(4,5*zoom):Math.max(2,3.2*zoom);ctx.stroke();
   if(zoom>0.25||hl){
     const fs=Math.max(9,11*zoom);ctx.font=`bold ${fs}px monospace`;
     ctx.fillStyle=hl?'#fbbf24':'#e63499';ctx.textAlign='center';ctx.textBaseline='bottom';
