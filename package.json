@@ -1,0 +1,9 @@
+{
+  "name": "routechoice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Analyse de choix d'itinéraire en course d'orientation sprint",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

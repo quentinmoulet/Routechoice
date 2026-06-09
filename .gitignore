@@ -1,0 +1,5 @@
+node_modules/
+shares/
+.netlify/
+test-data/
+__pycache__/

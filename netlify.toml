@@ -1,0 +1,13 @@
+# Déploiement Netlify (statique + fonctions serverless).
+# Les fonctions définissent elles-mêmes leur route (export const config = { path }),
+# donc pas de redirections à déclarer ici.
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Ne pas publier les fichiers de dev / données de test
+[build.processing]
+  skip_processing = true

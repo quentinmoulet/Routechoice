@@ -1,0 +1,14 @@
+{
+  "name": "Routechoice — analyse de choix sprint",
+  "short_name": "Routechoice",
+  "description": "Analyse des choix d'itinéraire en course d'orientation sprint.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#3d9bff",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Routechoice — Analyse de choix d'itinéraire sprint</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#3d9bff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Routechoice">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#ffffff;--bg2:#f5f8fd;--bg3:#eaf1fb;--bd:#d8e3f0;
+  --ac:#3d9bff;--ac2:#ff8a3d;--re:#ff6b6b;--gr:#22b07d;--am:#ff8a3d;
+  --tx:#1c2a3a;--mu:#6d7e92;
+  --mo:'Nunito',system-ui,sans-serif;--sa:'Nunito',system-ui,sans-serif;
+  --top:54px;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--mo);font-size:14px;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100dvh}
+
+/* ─── Barre du haut ─── */
+#topbar{flex:0 0 var(--top);height:var(--top);background:var(--bg2);border-bottom:1px solid var(--bd);
+  display:flex;align-items:center;gap:8px;padding:0 12px;z-index:30}
+.brand{font-family:var(--sa);font-weight:800;font-size:17px;color:var(--ac);letter-spacing:.02em;margin-right:4px;flex:0 0 auto}
+.tabs{display:flex;gap:8px;overflow-x:auto;flex:1 1 auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto}
+.tab{font-family:var(--sa);font-weight:700;font-size:13px;color:var(--tx);background:var(--bg3);
+  border:1px solid var(--bd);border-radius:9px;padding:10px 18px;cursor:pointer;transition:all .12s}
+.tab:hover{border-color:var(--ac)}
+.tab.active{background:var(--ac);border-color:var(--ac);color:#fff}
+.status{margin-left:auto;font-size:11px;color:var(--mu);max-width:42%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.status b{color:var(--gr)}
+
+/* ─── Carte ─── */
+#MA{flex:1 1 auto;position:relative;overflow:hidden;background:#e9eef5;cursor:crosshair;
+  user-select:none;touch-action:none}
+#dc{position:absolute;top:0;left:0}
+.dh{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:10px;pointer-events:none;text-align:center;padding:20px}
+.dhi{width:54px;height:54px;border:2px dashed var(--bd);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:24px}
+.dh p{color:var(--mu);font-size:13px}.dh .sub{font-size:11px;color:var(--bd)}
+#coords{display:none}
+/* boussole */
+#compass{position:absolute;top:12px;right:12px;width:46px;height:46px;border-radius:50%;
+  background:rgba(255,255,255,.94);border:1px solid var(--bd);box-shadow:0 2px 10px rgba(40,70,110,.2);
+  cursor:pointer;z-index:10;padding:0}
+#compass:hover{border-color:var(--ac)}
+#compass .rose{position:absolute;inset:0;transition:transform .25s ease}
+#compass .tip{position:absolute;left:50%;top:5px;transform:translateX(-50%);
+  border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:13px solid var(--re)}
+#compass .n{position:absolute;left:50%;top:17px;transform:translateX(-50%);
+  color:var(--re);font-weight:800;font-size:12px;line-height:1}
+#compass .rose::after{content:'';position:absolute;left:50%;bottom:8px;transform:translateX(-50%);
+  width:2px;height:14px;background:#9fb0c4}
+
+/* ─── Bandeau bas : inter-poste ─── */
+#bottombar{flex:0 0 auto;background:var(--bg2);border-top:1px solid var(--bd);
+  padding:8px 10px;display:flex;flex-direction:column;gap:7px;z-index:20}
+.legrow{display:flex;align-items:center;gap:8px}
+.navbtn{flex:0 0 40px;height:40px;font-size:20px;background:var(--bg3);border:1px solid var(--bd);
+  border-radius:9px;color:var(--tx);cursor:pointer}
+.navbtn:hover{border-color:var(--ac)}
+.leginfo{flex:1;min-width:0;text-align:center}
+.legcur{font-family:var(--sa);font-weight:700;font-size:15px;color:var(--tx);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legsub{font-size:10px;color:var(--mu)}.legsub b{color:var(--am)}
+.actbtn{height:40px;padding:0 14px;border-radius:9px;border:1px solid var(--bd);background:var(--bg3);
+  color:var(--tx);font-family:var(--mo);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.actbtn:hover{border-color:var(--ac)}
+.actbtn.p{background:var(--ac);border-color:var(--ac);color:#fff}
+.actbtn:disabled{opacity:.4;cursor:not-allowed}
+.choicesrow{display:flex;gap:6px;overflow-x:auto;min-height:38px;align-items:center;padding-bottom:2px}
+.choicesrow:empty::after,.choicesrow .empty{color:var(--mu);font-size:11px}
+.chip{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:7px 11px;border-radius:10px;
+  background:var(--bg3);border:1px solid var(--bd);cursor:pointer;white-space:nowrap}
+.chip:hover{background:#dfeafb}
+.chip .dist{font-weight:700;font-size:13px}
+.chip .rel{font-size:10px;color:var(--mu)}
+.chip .del{color:var(--re);font-size:13px;opacity:.7;margin-left:2px}
+.chip .del:hover{opacity:1}
+.manualrow{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mu);flex-wrap:wrap}
+.minibtn{padding:7px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--bg3);
+  color:var(--tx);font-family:var(--mo);font-size:11px;cursor:pointer}
+.minibtn:hover{border-color:var(--ac)}
+.minibtn.p{background:var(--ac);border-color:var(--ac);color:#fff}
+
+/* ─── Panneaux (Fichier / Carte) ─── */
+#backdrop{position:fixed;inset:var(--top) 0 0 0;background:rgba(0,0,0,.5);z-index:18;display:none}
+#backdrop.show{display:block}
+.panel{position:absolute;top:var(--top);left:0;right:0;z-index:25;background:var(--bg2);
+  border-bottom:1px solid var(--bd);padding:16px;display:none;flex-direction:column;gap:11px;
+  max-height:calc(100dvh - var(--top));overflow-y:auto;box-shadow:0 16px 36px rgba(40,70,110,.18)}
+.panel.show{display:flex}
+@media(min-width:720px){
+  .panel{left:12px;right:auto;width:400px;border:1px solid var(--bd);border-top:none;border-radius:0 0 14px 14px}
+}
+.panel h3{font-family:var(--sa);font-size:12px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--mu)}
+.lbl{font-size:11px;color:var(--mu);display:block}
+.bigbtn{width:100%;padding:13px;border-radius:11px;border:1px solid var(--bd);background:var(--bg3);
+  color:var(--tx);font-family:var(--mo);font-size:14px;cursor:pointer;text-align:center;transition:all .12s}
+.bigbtn:hover{border-color:var(--ac);background:rgba(91,140,255,.08)}
+.bigbtn.p{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:700}
+.bigbtn.p:hover{background:#7aa3ff}
+.bigbtn:disabled{opacity:.4;cursor:not-allowed}
+.row2{display:flex;gap:8px}.row2>*{flex:1}
+input[type=file]{display:none}
+input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg);border:1px solid var(--bd);
+  border-radius:9px;color:var(--tx);font-family:var(--mo);font-size:14px}
+.kv{display:flex;justify-content:space-between;font-size:12px;padding:1px 0}
+.kv span:last-child{color:var(--ac)}
+.sep{height:1px;background:var(--bd);margin:2px 0}
+.hint{font-size:11px;color:var(--mu);line-height:1.5}
+.brushrow{display:flex;gap:8px}.brushrow .bigbtn{font-size:13px;padding:11px}
+.cl{display:flex;flex-wrap:wrap;gap:4px 12px}
+.cli{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mu)}
+.clsq{width:11px;height:11px;border-radius:2px;flex-shrink:0}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+@media(max-width:520px){
+  #topbar{gap:6px;padding:0 8px}
+  .brand{font-size:14px;margin-right:0}
+  .tab{padding:9px 13px;font-size:12px}
+  .status{display:none}
+  .actbtn{padding:0 10px;font-size:11px}
+  .legcur{font-size:13px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ─── Barre du haut ─── -->
+  <div id="topbar">
+    <span class="brand">Routechoice</span>
+    <div class="tabs">
+      <button class="tab" id="tab-file" onclick="openPanel('file')">Fichier</button>
+      <button class="tab" id="tab-course" onclick="openPanel('course')">Parcours</button>
+      <button class="tab" id="tab-map" onclick="openPanel('map')">Carte</button>
+      <button class="tab" id="tab-share" onclick="openPanel('share')">Partager</button>
+      <button class="tab" id="tab-export" onclick="openPanel('export')">Export</button>
+    </div>
+    <span class="status" id="hs">en attente</span>
+  </div>
+
+  <!-- ─── Carte ─── -->
+  <main id="MA">
+    <canvas id="dc"></canvas>
+    <button id="compass" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleNorth()" title="Orientation : tronçon ↔ nord">
+      <span class="rose" id="compass-rose"><span class="tip"></span><span class="n">N</span></span>
+    </button>
+    <div class="dh" id="dh">
+      <div class="dhi">🗺</div>
+      <p>Ouvre <b>Fichier</b> pour charger un parcours</p>
+      <p class="sub">lien Livelox, ou JSON + image glissés ici</p>
+    </div>
+  </main>
+
+  <!-- ─── Bandeau bas : inter-poste ─── -->
+  <div id="bottombar">
+    <div class="legrow">
+      <button class="navbtn" onclick="prevLeg()">‹</button>
+      <div class="leginfo">
+        <div class="legcur" id="leg-cur">—</div>
+        <div class="legsub"><b id="i-straight">—</b> à vol d'oiseau</div>
+      </div>
+      <button class="navbtn" onclick="nextLeg()">›</button>
+      <button class="actbtn p" id="btn-analyze" onclick="analyzeCurrentLeg()" disabled>Analyser</button>
+      <button class="actbtn" id="btn-analyze-all" onclick="analyzeAllLegs()" disabled>Tout</button>
+    </div>
+    <div class="choicesrow" id="choices"></div>
+    <div class="manualrow">
+      <button class="minibtn" id="btn-addchoice" onclick="startAddChoice()">+ choix manuel</button>
+      <span id="addchoice-panel" style="display:none">
+        <b id="i-manpts">0</b> point(s) —
+        <button class="minibtn p" onclick="validateAddChoice()">Valider</button>
+        <button class="minibtn" onclick="cancelAddChoice()">Annuler</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Backdrop + panneaux ─── -->
+<div id="backdrop" onclick="closePanels()"></div>
+
+<!-- Panneau Fichier -->
+<div class="panel" id="panel-file">
+  <h3>Charger un parcours</h3>
+  <label class="lbl">Lien Livelox (événement ou classe)</label>
+  <input type="text" id="ui" placeholder="https://www.livelox.com/Viewer/…?classId=…">
+  <button class="bigbtn p" onclick="loadFromUrl()">Charger depuis le lien</button>
+  <div class="hint" id="proxy-hint"></div>
+  <div class="sep"></div>
+  <label class="lbl">Ou fichiers téléchargés (onglet Network) — tu peux aussi les glisser sur la carte</label>
+  <div class="row2">
+    <button class="bigbtn" onclick="document.getElementById('fi-json').click()">JSON…</button>
+    <button class="bigbtn" id="btn-img" onclick="document.getElementById('fi-img').click()">Image…</button>
+  </div>
+  <div class="kv"><span>JSON</span><span id="i-json">—</span></div>
+  <div class="kv"><span>Image</span><span id="i-img">—</span></div>
+  <input type="file" id="fi-json" accept=".json,application/json">
+  <input type="file" id="fi-img" accept="image/*">
+  <div class="sep"></div>
+  <h3>Échelle</h3>
+  <div class="kv"><span>Mètres par pixel</span><input type="number" id="mpp" value="1" step="0.0001" min="0.0001" oninput="onScaleEdit()" style="width:120px;padding:6px;text-align:right"></div>
+  <label class="lbl">Auto depuis Livelox. Sinon, calibre en plaçant 2 points :</label>
+  <button class="bigbtn" id="m-cal" onclick="setMode('cal')">Placer A puis B sur la carte</button>
+  <div class="kv"><span>Distance mesurée</span><span id="i-calpx">—</span></div>
+  <div class="kv"><span>Distance réelle (m)</span><input type="number" id="cal-dist" value="120" step="1" min="1" style="width:120px;padding:6px;text-align:right"></div>
+  <button class="bigbtn" onclick="applyCalibration()">Appliquer l'échelle</button>
+</div>
+
+<!-- Panneau Parcours (tracé manuel) -->
+<div class="panel" id="panel-course">
+  <h3>Tracer le parcours à la main</h3>
+  <div class="hint">Pour une carte sans lien Livelox : charge l'image (Fichier), calibre l'échelle, puis place les postes ici. 1er point = <b>départ (S)</b>, puis les postes <b>1, 2, 3…</b>, le dernier = <b>arrivée (F)</b>. Tape un poste pour le sélectionner, puis glisse-le pour le repositionner.</div>
+  <button class="bigbtn p" id="btn-course" onclick="toggleCourse()">Tracer le parcours</button>
+  <div class="row2">
+    <button class="bigbtn" onclick="deleteSelectedPt()">Supprimer le poste sélectionné</button>
+    <button class="bigbtn" onclick="clearCourse()">Tout effacer</button>
+  </div>
+  <div class="kv"><span>Postes placés</span><span id="i-coursecount">0</span></div>
+  <button class="bigbtn p" onclick="validateCourse()">Valider le parcours</button>
+</div>
+
+<!-- Panneau Carte -->
+<div class="panel" id="panel-map">
+  <h3>Carte</h3>
+  <button class="bigbtn p" id="btn-grid" onclick="doAnalysis()" disabled>Analyser la carte</button>
+  <button class="bigbtn" id="btn-overlay" onclick="cycleOverlay()">Calque : off</button>
+  <div class="cl">
+    <div class="cli"><div class="clsq" style="background:#ff3b3b"></div>Infranchissable</div>
+    <div class="cli"><div class="clsq" style="background:#39e65a"></div>Franchissable</div>
+  </div>
+  <div class="sep"></div>
+  <h3>Pinceau de correction</h3>
+  <label class="lbl">Clic + glisser pour corriger le masque (calque visible). Alt+clic = déplacer.</label>
+  <div class="brushrow">
+    <button class="bigbtn" id="m-brush-block" onclick="setBrush('block')">Bloquer</button>
+    <button class="bigbtn" id="m-brush-free" onclick="setBrush('free')">Libérer</button>
+    <button class="bigbtn" id="m-brush-off" onclick="setBrush('off')">Off</button>
+  </div>
+</div>
+
+<!-- Panneau Partager -->
+<div class="panel" id="panel-share">
+  <h3>Partager l'événement</h3>
+  <div class="hint">Crée un lien qui rouvre ce parcours avec tous les choix calculés (et les corrections au pinceau). Le lien fonctionne tant que le serveur local tourne (même réseau).</div>
+  <button class="bigbtn p" onclick="shareEvent()">Créer le lien de partage</button>
+  <input type="text" id="share-url" placeholder="le lien apparaîtra ici" readonly>
+  <button class="bigbtn" onclick="copyShare()">Copier le lien</button>
+  <div class="hint" id="share-msg"></div>
+</div>
+
+<!-- Panneau Export -->
+<div class="panel" id="panel-export">
+  <h3>Export PDF</h3>
+  <div class="hint">Génère une page par tronçon (capture de la carte avec les choix). Analyse d'abord les tronçons voulus (« Tout » dans le bandeau du bas). Dans la fenêtre d'impression, choisis « Enregistrer au format PDF ».</div>
+  <button class="bigbtn p" onclick="exportPdf()">Exporter en PDF</button>
+</div>
+
+<!-- réglages internes (valeurs par défaut, non affichés) -->
+<div id="hidden-settings" style="display:none">
+  <input id="p-detail" value="2600"><input id="p-thin" value="1"><input id="p-close" value="0">
+  <input id="p-clear" value="0"><input id="p-ratio" value="35"><input id="p-sep" value="35">
+  <input id="p-maxk" value="5"><input id="brush-r" value="2">
+  <span id="coords"></span><span id="i-blocked"></span><span id="i-graph"></span>
+  <span id="i-time"></span><span id="i-scalesrc"></span><span id="src-tag"></span>
+  <div id="log"></div>
+</div>
+
+
+<script>
+"use strict";
+// ════════════════════════════════════════════════════════════════════════════
+//  Routechoice — portage en JS pur de la méthode SprintOAnalyzer
+//  Pipeline :
+//    1. Quantification : chaque pixel → couleur ISSprOM la plus proche
+//    2. Masque franchissable / infranchissable
+//    3. Ouverture morphologique (supprime les traits fins non bloquants)
+//    4. Graphe de visibilité : sommets aux coins des obstacles, arêtes = ligne de vue
+//    5. Dijkstra + alternatives (blocage de sommets) + filtre de similarité
+//  Import Livelox : JSON class-storage → image + postes (matrice) + échelle
+// ════════════════════════════════════════════════════════════════════════════
+
+const log = (m,c='')=>{const el=document.getElementById('log');el.innerHTML+=`<div class="${c}">${m}</div>`;el.scrollTop=el.scrollHeight;};
+const stat = s=>document.getElementById('hs').textContent=s;
+const $ = id=>document.getElementById(id);
+
+// ─── Palette ISSprOM (data_map.h, valeurs BGR → RGB) ──────────────────────────
+const PAL = {
+  URBANSTREET:[233,200,178], LIGHTGRAY:[204,204,204], BROWN:[187,108,47],
+  YELLOW:[245,193,95], ROUGHOPEN:[249,224,170], WHITE:[255,255,255],
+  LIGHTGREEN:[202,237,181], MEDIUMGREEN:[157,223,123], LIGHTBLUE:[184,223,238],
+  NORTHLINES:[79,173,211], OLIVE:[162,170,60], DARKBLUE:[94,164,212],
+  BLACK:[5,5,5], DARKGREEN:[107,210,68], BLACKGREEN:[58,90,24],
+  PURPLE:[230,52,153], LIGHTPURPLE:[198,138,246], DARKGRAY:[104,104,104],
+};
+const PAL_KEYS = Object.keys(PAL);
+const PASSABLE  = new Set(['URBANSTREET','LIGHTGRAY','YELLOW','ROUGHOPEN','WHITE','LIGHTGREEN','MEDIUMGREEN','DARKGREEN','LIGHTBLUE']);
+const IMPASSABLE= new Set(['OLIVE','BLACK','BLACKGREEN','DARKGRAY','DARKBLUE']);
+// "Surimpressions" transparentes → traitées comme "inconnu" et reclassées d'après
+// le terrain voisin le plus proche (on regarde "dessous") :
+//  - violet : cercles/traits/numéros du parcours
+//  - brun   : courbes de niveau (sur un bâtiment → bloqué ; sur terrain ouvert →
+//             ouvert ; les gaps étroits entre courbes restent préservés)
+//  - lignes Nord : lignes magnétiques de référence
+const OVERPRINT = new Set(['PURPLE','LIGHTPURPLE','BROWN','NORTHLINES']);
+
+// ════════════════════════════════════════════════════════════════════════════
+//  État global
+// ════════════════════════════════════════════════════════════════════════════
+let srcImg=null, srcCvs=null, srcCtx=null;   // image carte
+let mpp=1;                                     // mètres par pixel
+let controls=[];                               // [{x,y,code,type}]  en pixels image
+let legIdx=0;                                  // tronçon courant
+let ascale=1;                                  // facteur d'analyse (grille = image × ascale)
+let grid=null;                                 // {W,H,blocked:Uint8, blockedClear:Uint8} en coords grille
+let graph=null;                                // {nodes:[{x,y}], adj:[[{to,w}]]}
+let overlayMode=0;                             // 0 off, 1 masque, 2 masque+graphe
+let legResults={};                             // cache: legIdx → [{path,distPx,...}]
+let mode='nav';                                // 'nav' | 'cal'
+let calA=null, calB=null;
+let brushMode='off';                           // 'off' | 'block' | 'free'
+let brushing=false, brushDirty=false;
+let manualMode=false, manualPts=[];            // ajout d'un choix manuel par points de passage
+let brushStrokes=[], _lastBrush=null;          // historique pinceau (pour le partage)
+let eventClassId=null, pendingBrush=null;      // partage : id de classe Livelox / pinceau à rejouer
+let courseMode=false, coursePts=[], selPt=-1;  // tracé manuel du parcours
+let _courseDrag=false,_courseDownPos=null,_courseMoved=0,_touch=null;
+const COLORS=['#5b8cff','#ff6b6b','#4ade80','#fbbf24','#a78bfa','#fb923c','#22d3ee','#f472b6'];
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Canvas, zoom & pan
+// ════════════════════════════════════════════════════════════════════════════
+const dc=$('dc'), ctx=dc.getContext('2d'), MA=$('MA');
+let zoom=1,panX=0,panY=0,panning=false,panS={x:0,y:0};
+let viewRot=0, northUp=false;                   // rotation de la vue ; false = axe du tronçon vers le haut
+function resize(){dc.width=MA.clientWidth;dc.height=MA.clientHeight;}
+window.addEventListener('resize',()=>{if(srcImg){resize();render();}});
+// le canvas suit la taille de #MA (qui change quand le bandeau bas grandit/rétrécit)
+if(window.ResizeObserver){new ResizeObserver(()=>{if(srcImg){resize();render();}}).observe(MA);}
+resize();
+// image ↔ écran, avec rotation de vue (viewRot) autour de l'origine puis zoom+pan
+function i2s(ix,iy){const c=Math.cos(viewRot),s=Math.sin(viewRot);return{x:(ix*c-iy*s)*zoom+panX,y:(ix*s+iy*c)*zoom+panY};}
+function s2i(cx,cy){const r=MA.getBoundingClientRect();const dx=(cx-r.left-panX)/zoom,dy=(cy-r.top-panY)/zoom;const c=Math.cos(viewRot),s=Math.sin(viewRot);return{x:Math.round(dx*c+dy*s),y:Math.round(-dx*s+dy*c)};}
+// ─── Orientation & cadrage ───
+function setLegRotation(){
+  const lg=currentLeg();
+  if(northUp||!lg)viewRot=0;
+  else{const dx=lg.p2.x-lg.p1.x,dy=lg.p2.y-lg.p1.y;viewRot=-Math.PI/2-Math.atan2(dy,dx);}
+  const rose=$('compass-rose');if(rose)rose.style.transform='rotate('+viewRot+'rad)';
+}
+function fitImage(){
+  if(!srcImg)return;const mw=MA.clientWidth,mh=MA.clientHeight;
+  zoom=Math.min(mw/srcImg.width,mh/srcImg.height)*0.92;
+  panX=(mw-srcImg.width*zoom)/2;panY=(mh-srcImg.height*zoom)/2;
+}
+// cadre le tronçon courant (postes + tracés) avec ~15% de marge, selon l'orientation
+function fitLeg(){
+  if(!srcImg)return;
+  const lg=currentLeg();const pts=[];
+  if(lg){pts.push(lg.p1,lg.p2);}
+  const res=legResults[legIdx];if(res)for(const r of res)for(const p of r.path)pts.push(p);
+  if(!pts.length){fitImage();render();return;}
+  const c=Math.cos(viewRot),s=Math.sin(viewRot);
+  let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+  for(const p of pts){const rx=p.x*c-p.y*s,ry=p.x*s+p.y*c;if(rx<mnx)mnx=rx;if(rx>mxx)mxx=rx;if(ry<mny)mny=ry;if(ry>mxy)mxy=ry;}
+  const bw=Math.max(1,mxx-mnx),bh=Math.max(1,mxy-mny),mw=MA.clientWidth,mh=MA.clientHeight;
+  zoom=Math.max(0.02,Math.min(40,Math.min(mw/bw,mh/bh)/1.15*0.95));
+  panX=mw/2-zoom*(mnx+mxx)/2;panY=mh/2-zoom*(mny+mxy)/2;
+  render();
+}
+function focusLeg(){setLegRotation();fitLeg();}
+function toggleNorth(){northUp=!northUp;focusLeg();}
+
+MA.addEventListener('wheel',e=>{
+  if(!srcImg)return;e.preventDefault();
+  const r=MA.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;
+  const d=e.deltaY<0?1.15:1/1.15;
+  panX=mx-(mx-panX)*d;panY=my-(my-panY)*d;
+  zoom=Math.max(0.04,Math.min(40,zoom*d));render();
+},{passive:false});
+MA.addEventListener('mousedown',e=>{
+  if(e.button===1||(e.button===0&&e.altKey)){panning=true;panS={x:e.clientX-panX,y:e.clientY-panY};MA.style.cursor='grab';e.preventDefault();return;}
+  if(e.button===0&&courseMode){
+    const p=s2i(e.clientX,e.clientY),hit=nearestCoursePt(p);
+    if(hit>=0){selPt=hit;_courseDrag=true;}else{_courseDrag=false;_courseDownPos=p;}
+    _courseMoved=0;render();e.preventDefault();return;
+  }
+  if(e.button===0&&brushMode!=='off'&&grid){brushing=true;paintAt(s2i(e.clientX,e.clientY));e.preventDefault();}
+});
+document.addEventListener('mousemove',e=>{
+  if(panning){panX=e.clientX-panS.x;panY=e.clientY-panS.y;render();}
+  if(brushing)paintAt(s2i(e.clientX,e.clientY));
+  if(courseMode&&e.buttons===1){_courseMoved+=Math.abs(e.movementX)+Math.abs(e.movementY);if(_courseDrag)moveSelPt(s2i(e.clientX,e.clientY));}
+});
+document.addEventListener('mouseup',()=>{
+  panning=false;MA.style.cursor='crosshair';
+  if(brushing){brushing=false;if(brushDirty)rebuildAfterBrush();}
+  if(courseMode){if(!_courseDrag&&_courseDownPos&&_courseMoved<6)addPt(_courseDownPos);_courseDrag=false;_courseDownPos=null;_courseMoved=0;}
+});
+MA.addEventListener('click',e=>{
+  if(!srcImg||panning||e.altKey||courseMode)return;
+  if(manualMode){
+    manualPts.push(s2i(e.clientX,e.clientY));
+    $('i-manpts').textContent=manualPts.length;
+    render();return;
+  }
+  if(mode==='cal'){
+    const p=s2i(e.clientX,e.clientY);
+    if(!calA){calA=p;log(`Calibration A (${p.x},${p.y})`,'in');}
+    else{calB=p;const d=Math.hypot(calB.x-calA.x,calB.y-calA.y);$('i-calpx').textContent=d.toFixed(1)+' px';log(`Calibration B (${p.x},${p.y}) — ${d.toFixed(1)}px`,'in');setMode('nav');}
+    render();
+  }
+});
+
+// ─── Tactile (mobile) : 1 doigt = pan / déplacer poste / pinceau ; 2 doigts = zoom ───
+MA.addEventListener('touchstart',e=>{
+  if(!srcImg)return;
+  if(e.touches.length===1){
+    const t=e.touches[0],p=s2i(t.clientX,t.clientY);
+    if(courseMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_touch={mode:'cpt'};render();e.preventDefault();return;}}
+    if(brushMode!=='off'&&grid&&!courseMode){brushing=true;paintAt(p);_touch={mode:'brush'};e.preventDefault();return;}
+    _touch={mode:'pan',x:t.clientX,y:t.clientY,px:panX,py:panY,moved:0,downP:p};
+  }else if(e.touches.length===2){
+    const a=e.touches[0],b=e.touches[1];
+    _touch={mode:'pinch',d:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),z:zoom,px:panX,py:panY,
+      cx:(a.clientX+b.clientX)/2,cy:(a.clientY+b.clientY)/2};
+  }
+  e.preventDefault();
+},{passive:false});
+MA.addEventListener('touchmove',e=>{
+  if(!_touch)return;
+  if(_touch.mode==='cpt'&&e.touches.length===1)moveSelPt(s2i(e.touches[0].clientX,e.touches[0].clientY));
+  else if(_touch.mode==='brush'&&e.touches.length===1)paintAt(s2i(e.touches[0].clientX,e.touches[0].clientY));
+  else if(_touch.mode==='pan'&&e.touches.length===1){
+    const t=e.touches[0],dx=t.clientX-_touch.x,dy=t.clientY-_touch.y;
+    _touch.moved+=Math.abs(dx)+Math.abs(dy);panX=_touch.px+dx;panY=_touch.py+dy;render();
+  }else if(_touch.mode==='pinch'&&e.touches.length===2){
+    const a=e.touches[0],b=e.touches[1],nd=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+    const r=MA.getBoundingClientRect(),mx=_touch.cx-r.left,my=_touch.cy-r.top,f=nd/_touch.d;
+    zoom=Math.max(0.02,Math.min(40,_touch.z*f));
+    panX=mx-(mx-_touch.px)*(zoom/_touch.z);panY=my-(my-_touch.py)*(zoom/_touch.z);render();
+  }
+  e.preventDefault();
+},{passive:false});
+MA.addEventListener('touchend',e=>{
+  if(_touch){
+    if(_touch.mode==='pan'&&_touch.moved<10&&courseMode)addPt(_touch.downP);
+    if(_touch.mode==='brush'){brushing=false;if(brushDirty)rebuildAfterBrush();}
+  }
+  _touch=e.touches.length?null:null;  // on réinitialise dès qu'un doigt se lève
+},{passive:false});
+
+function toggleCard(ct){ct.parentElement.classList.toggle('collapsed');}
+function setMode(m){mode=m;$('m-cal').classList.toggle('p',m==='cal');if(m==='cal'){calA=null;calB=null;closePanels();}}
+
+// ─── Panneaux haut (Fichier / Carte) ───
+let openPanelName=null;
+const PANELS=['file','course','map','share','export'];
+function openPanel(name){
+  if(openPanelName===name){closePanels();return;}
+  openPanelName=name;
+  PANELS.forEach(p=>{
+    $('panel-'+p).classList.toggle('show',p===name);
+    $('tab-'+p).classList.toggle('active',p===name);
+  });
+  $('backdrop').classList.add('show');
+}
+function closePanels(){
+  openPanelName=null;
+  PANELS.forEach(p=>{$('panel-'+p).classList.remove('show');$('tab-'+p).classList.remove('active');});
+  $('backdrop').classList.remove('show');
+}
+
+// ─── Pinceau de correction ───
+function setBrush(m){
+  if(m!=='off'&&!grid){log('Analyse la carte d\'abord','er');return;}
+  brushMode=m;
+  ['block','free','off'].forEach(k=>$('m-brush-'+k).classList.toggle('p',k===m));
+  if(m!=='off'){if(overlayMode<1){overlayMode=1;$('btn-overlay').textContent='Calque : masque';}closePanels();}
+  render();
+}
+function paintAt(imgPt){
+  if(!grid||brushMode==='off'||!overlayCvs)return;
+  const R=Math.max(1,Math.round((+$('brush-r').value)*ascale));
+  const gx=Math.round(imgPt.x*ascale),gy=Math.round(imgPt.y*ascale);
+  const W=grid.W,H=grid.H,block=brushMode==='block'?1:0;
+  const x0=Math.max(0,gx-R),y0=Math.max(0,gy-R),x1=Math.min(W-1,gx+R),y1=Math.min(H-1,gy+R);
+  if(x1<x0||y1<y0)return;
+  const octx=overlayCvs.getContext('2d');
+  const im=octx.getImageData(x0,y0,x1-x0+1,y1-y0+1),bw=x1-x0+1;
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+    const dx=x-gx,dy=y-gy;if(dx*dx+dy*dy>R*R)continue;
+    grid.blocked[y*W+x]=block;
+    const di=((y-y0)*bw+(x-x0))<<2;
+    if(block){im.data[di]=255;im.data[di+1]=59;im.data[di+2]=59;im.data[di+3]=150;}
+    else{im.data[di]=57;im.data[di+1]=230;im.data[di+2]=90;im.data[di+3]=38;}
+  }
+  octx.putImageData(im,x0,y0);
+  // historique (pour le partage) — throttlé au rayon
+  const rr=+$('brush-r').value;
+  if(!_lastBrush||Math.hypot(imgPt.x-_lastBrush.x,imgPt.y-_lastBrush.y)>=rr){
+    brushStrokes.push({x:imgPt.x,y:imgPt.y,r:rr,m:brushMode});_lastBrush={x:imgPt.x,y:imgPt.y};
+  }
+  brushDirty=true;render();
+}
+// rejoue des coups de pinceau (au chargement d'un partage), sans ré-enregistrer
+function applyBrushStrokes(strokes){
+  if(!grid||!strokes||!strokes.length)return;
+  const save=brushMode, saveR=$('brush-r').value, saveLast=_lastBrush;
+  for(const s of strokes){brushMode=s.m;$('brush-r').value=s.r;_lastBrush={x:1e9,y:1e9};paintAt({x:s.x,y:s.y});}
+  brushMode=save;$('brush-r').value=saveR;_lastBrush=saveLast;brushStrokes=strokes.slice();
+  const clearR=+$('p-clear').value;grid.blockedClear=clearR>0?dilateBox(grid.blocked,grid.W,grid.H,clearR):grid.blocked;
+}
+// ─── Tracé manuel du parcours ───
+function toggleCourse(){
+  if(!srcImg){log('Charge d\'abord une image (Fichier)','er');return;}
+  courseMode=!courseMode;
+  $('btn-course').classList.toggle('p',courseMode);
+  $('btn-course').textContent=courseMode?'Tracé en cours — clique les postes':'Tracer le parcours';
+  if(courseMode){brushMode='off';setBrush('off');manualMode=false;mode='nav';closePanels();}
+  selPt=-1;render();
+}
+function courseLabel(i,n){return i===0?'S':(i===n-1?'F':String(i));}
+function nearestCoursePt(p){
+  const thr=Math.max(9,16/zoom);let best=-1,bd=thr*thr;
+  for(let i=0;i<coursePts.length;i++){const dx=coursePts[i].x-p.x,dy=coursePts[i].y-p.y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}}
+  return best;
+}
+function addPt(p){coursePts.push({x:p.x,y:p.y});selPt=coursePts.length-1;$('i-coursecount').textContent=coursePts.length;render();}
+function moveSelPt(p){if(selPt>=0&&selPt<coursePts.length){coursePts[selPt]={x:p.x,y:p.y};render();}}
+function deleteSelectedPt(){if(selPt<0||selPt>=coursePts.length){log('Aucun poste sélectionné','er');return;}coursePts.splice(selPt,1);selPt=-1;$('i-coursecount').textContent=coursePts.length;render();}
+function clearCourse(){coursePts=[];selPt=-1;$('i-coursecount').textContent='0';render();}
+function validateCourse(){
+  if(coursePts.length<2){log('Place au moins un départ et une arrivée','er');return;}
+  const n=coursePts.length;
+  controls=coursePts.map((p,i)=>({x:Math.round(p.x),y:Math.round(p.y),code:courseLabel(i,n),type:i===0?0:(i===n-1?2:1)}));
+  courseMode=false;$('btn-course').classList.remove('p');$('btn-course').textContent='Tracer le parcours';
+  legIdx=0;legResults={};updateLegUI();focusLeg();closePanels();
+  log(`Parcours validé : ${n} postes (S → F)`,'ok');stat(n+' postes');
+}
+function drawCoursePts(){
+  const n=coursePts.length;
+  if(n>1){ctx.strokeStyle='rgba(230,52,153,.6)';ctx.lineWidth=Math.max(1.5,2*zoom);ctx.beginPath();coursePts.forEach((p,i)=>{const s=i2s(p.x,p.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});ctx.stroke();}
+  coursePts.forEach((p,i)=>{
+    const s=i2s(p.x,p.y),r=Math.max(7,10*zoom)*3.5,sel=i===selPt;
+    ctx.beginPath();
+    if(i===0){ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();}
+    else if(i===n-1){ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);}
+    else ctx.arc(s.x,s.y,r,0,7);
+    ctx.strokeStyle=sel?'#3d9bff':'#e63499';ctx.lineWidth=sel?Math.max(3,3.5*zoom):Math.max(2,2.5*zoom);ctx.stroke();
+    const fs=Math.max(11,13*zoom);ctx.font=`800 ${fs}px Nunito,sans-serif`;ctx.fillStyle=sel?'#3d9bff':'#e63499';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(courseLabel(i,n),s.x,s.y-r-2);
+  });
+}
+
+function rebuildAfterBrush(){
+  brushDirty=false;_lastBrush=null;
+  const clearR=+$('p-clear').value;
+  grid.blockedClear=clearR>0?dilateBox(grid.blocked,grid.W,grid.H,clearR):grid.blocked;
+  // on GARDE tous les choix déjà calculés ; pour mettre à jour un poste, le
+  // ré-analyser (« Analyser » écrase uniquement les choix de ce poste).
+  log('Correction appliquée (choix conservés)','ok');render();renderChoices();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Drag & drop + file pickers
+// ════════════════════════════════════════════════════════════════════════════
+MA.addEventListener('dragover',e=>e.preventDefault());
+MA.addEventListener('drop',e=>{
+  e.preventDefault();
+  for(const f of e.dataTransfer.files){
+    if(f.type.startsWith('image/')) loadImageFile(f);
+    else if(f.name.endsWith('.json')||f.type==='application/json') loadJsonFile(f);
+  }
+});
+$('fi-json').addEventListener('change',e=>{if(e.target.files[0])loadJsonFile(e.target.files[0]);});
+$('fi-img').addEventListener('change',e=>{if(e.target.files[0])loadImageFile(e.target.files[0]);});
+
+function loadJsonFile(f){
+  const rd=new FileReader();
+  rd.onload=()=>{try{parseLivelox(JSON.parse(rd.result));$('i-json').textContent=f.name;}catch(err){log('JSON illisible : '+err.message,'er');}};
+  rd.readAsText(f);
+}
+function loadImageFile(f){
+  loadImage(URL.createObjectURL(f),f.name);
+  $('i-img').textContent=f.name;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Chargement image
+// ════════════════════════════════════════════════════════════════════════════
+function loadImage(src,name,after){
+  const im=new Image();im.crossOrigin='anonymous';
+  im.onload=()=>{
+    srcImg=im;
+    srcCvs=document.createElement('canvas');srcCvs.width=im.width;srcCvs.height=im.height;
+    srcCtx=srcCvs.getContext('2d',{willReadFrequently:true});srcCtx.drawImage(im,0,0);
+    // test taint
+    try{srcCtx.getImageData(0,0,1,1);}catch(err){log('Image « tainted » (CORS) — impossible de lire les pixels. Télécharge l\'image et dépose le fichier.','er');srcImg=null;return;}
+    $('dh').style.display='none';
+    $('i-img').textContent=`${name} (${im.width}×${im.height})`;
+    grid=null;graph=null;legResults={};overlayMode=0;$('btn-overlay').textContent='Calque : off';
+    $('btn-grid').disabled=false;
+    resize();updateLegUI();focusLeg();promptImageDrop(false);
+    log(`Image chargée : ${im.width}×${im.height}`,'ok');stat('image prête');
+    if(after)after();
+  };
+  im.onerror=()=>log('Erreur de chargement image (CORS si URL distante). Dépose le fichier image.','er');
+  im.src=src;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Import Livelox
+// ════════════════════════════════════════════════════════════════════════════
+function parseLivelox(d){
+  if(!d.map||!d.courses){log('JSON inattendu (pas de .map/.courses)','er');return;}
+  try{eventClassId=(d.courses[0].classes&&d.courses[0].classes[0].id)||eventClassId;}catch(e){}
+  const img=(d.map.images&&d.map.images[0])||d.map;
+  const imgUrl=img.url||d.map.url;
+  // matrice projection : world(x,y) → pixel(px,py)
+  const M=(img.projection&&img.projection.matrix)||(d.map.images&&d.map.images[0].projection.matrix);
+  if(M){
+    const m00=M[0][0],m01=M[0][1],m02=M[0][2],m10=M[1][0],m11=M[1][1],m12=M[1][2];
+    window._lvxM={m00,m01,m02,m10,m11,m12};
+    mpp=1/Math.sqrt(m00*m00+m10*m10);
+    $('mpp').value=mpp.toFixed(4);
+    $('i-scalesrc').textContent='matrice Livelox';
+    $('i-scalesrc') && ($('i-scalesrc').textContent='Livelox');
+  }else if(d.map.resolution){
+    mpp=1/d.map.resolution; $('mpp').value=mpp.toFixed(4); $('i-scalesrc').textContent='resolution';
+  }
+  $('src-tag').textContent='1:'+(d.map.mapScale||'?');
+  // postes du premier parcours
+  const course=d.courses[0];
+  controls=[];
+  if(course&&course.controls){
+    for(const cc of course.controls){
+      const c=cc.control||cc;
+      const pp=c.projectedPosition;
+      let px,py;
+      if(window._lvxM&&pp){const m=window._lvxM;px=m.m00*pp.x+m.m01*pp.y+m.m02;py=m.m10*pp.x+m.m11*pp.y+m.m12;}
+      else if(c.mapPosition){px=c.mapPosition.x;py=c.mapPosition.y;} // fallback peu fiable
+      else continue;
+      controls.push({x:Math.round(px),y:Math.round(py),code:c.code||String(c.numericCode||''),type:c.type});
+    }
+  }
+  legIdx=0;
+  log(`Livelox : ${controls.length} postes, parcours « ${course&&course.name||'?'} » (${(course&&course.length||0)}m), ${mpp.toFixed(3)} m/px`,'ok');
+  if(imgUrl){window._lvxImgUrl=imgUrl;fetchImageSmart(imgUrl);}
+  updateLegUI();focusLeg();
+}
+
+// Les blobs Livelox n'envoient pas d'en-tête CORS → image illisible en cross-origin.
+// Si l'appli tourne derrière le serveur local (server.py), on passe par /api/image
+// (relai même-origine → lisible). Sinon, dépôt manuel du fichier.
+async function fetchImageSmart(url){
+  promptImageDrop(true);
+  try{
+    const r=await fetch('/api/image?url='+encodeURIComponent(url));
+    if(r.ok){const b=await r.blob();if(b.size>2000){loadImage(URL.createObjectURL(b),'livelox');return;}}
+  }catch(e){}
+  log('Image non chargée automatiquement. Dépose le fichier image (bouton surligné) — ou lance « python server.py » pour le chargement par lien.','wa');
+  stat('dépose l\'image');
+}
+// surligne le bouton de dépôt d'image quand l'image est attendue
+function promptImageDrop(on){
+  const b=$('btn-img');if(!b)return;
+  if(on){b.textContent='⬇ Dépose l\'image carte ici';b.classList.add('p');}
+  else{b.textContent='Image…';b.classList.remove('p');}
+}
+
+// Charge depuis un lien Livelox (événement/classe) via le serveur local.
+// Extrait le classId, appelle /api/classblob ; parseLivelox récupère ensuite l'image
+// via /api/image. Sans serveur local → message d'aide.
+async function loadFromUrl(){
+  const u=$('ui').value.trim();if(!u)return;
+  const m=u.match(/classId=(\d+)/)||u.match(/class-storage\/0*(\d+)_/)||u.match(/^(\d+)$/);
+  const cid=m&&m[1];
+  if(!cid){log('Lien invalide : il faut un classId (ex. …?classId=1177812).','er');return;}
+  eventClassId=+cid;
+  closePanels();stat('chargement…');log('Chargement du parcours via le serveur local…','in');
+  try{
+    const r=await fetch('/api/classblob?classId='+cid);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    if(j.error)throw new Error(j.error);
+    parseLivelox(j);
+  }catch(err){
+    log('Échec : '+err.message+'. Le chargement par lien nécessite le serveur local : lance « python server.py » dans le dossier, puis ouvre http://localhost:8765/.','er');
+    stat('serveur requis');
+  }
+}
+// utilisé par les tests : parseLivelox sans déclencher le fetch d'image (on charge
+// une image locale à la place).
+function parseLiveloxNoImg(d){const r1=loadImage,r2=fetchImageSmart;window.loadImage=()=>{};window.fetchImageSmart=()=>{};try{parseLivelox(d);}finally{window.loadImage=r1;window.fetchImageSmart=r2;}}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Partage (via le serveur local) & Export PDF
+// ════════════════════════════════════════════════════════════════════════════
+async function shareEvent(){
+  if(!srcImg||controls.length<2){log('Charge/trace un parcours d\'abord','er');return;}
+  const state={v:1,mpp,controls,northUp,classId:eventClassId||null,
+    detail:+$('p-detail').value,thin:+$('p-thin').value,close:+$('p-close').value,clear:+$('p-clear').value,
+    legs:{},brush:brushStrokes};
+  for(const k in legResults)state.legs[k]=legResults[k].map(r=>({path:r.path,distPx:r.distPx,manual:!!r.manual}));
+  if(!eventClassId)state.img=srcCvs.toDataURL('image/jpeg',0.85); // carte locale → embarquée
+  $('share-msg').textContent='Création du lien…';
+  try{
+    const r=await fetch('/api/share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+    const j=await r.json();if(j.error)throw new Error(j.error);
+    const url=location.origin+'/?share='+j.id;
+    $('share-url').value=url;$('share-msg').textContent='Lien prêt ✓ — copie-le et envoie-le.';
+    log('Lien de partage créé','ok');
+  }catch(e){$('share-msg').textContent='Échec : '+e.message+' (le serveur local doit tourner).';log('Partage échoué : '+e.message,'er');}
+}
+function copyShare(){const i=$('share-url');if(!i.value)return;i.select();try{navigator.clipboard.writeText(i.value);}catch(e){document.execCommand('copy');}$('share-msg').textContent='Copié dans le presse-papier ✓';}
+
+async function tryLoadShare(){
+  const m=location.search.match(/[?&]share=([a-z0-9]+)/i);if(!m)return;
+  log('Ouverture d\'un parcours partagé…','in');stat('chargement partage…');
+  try{
+    const st=await (await fetch('/api/share?id='+m[1])).json();
+    if(st.error)throw new Error(st.error);
+    mpp=+st.mpp||1;$('mpp').value=mpp.toFixed(4);
+    controls=st.controls||[];eventClassId=st.classId||null;northUp=!!st.northUp;
+    if(st.detail)$('p-detail').value=st.detail;if(st.thin!=null)$('p-thin').value=st.thin;
+    if(st.close!=null)$('p-close').value=st.close;if(st.clear!=null)$('p-clear').value=st.clear;
+    const restore=()=>{
+      legResults={};
+      for(const k in (st.legs||{}))legResults[k]=st.legs[k].map(r=>({path:r.path,distPx:r.distPx,manual:r.manual}));
+      pendingBrush=(st.brush&&st.brush.length)?st.brush:null;
+      legIdx=0;updateLegUI();focusLeg();
+      log('Parcours partagé chargé ✓'+(pendingBrush?' (clique « Analyser la carte » pour réappliquer le pinceau)':''),'ok');
+    };
+    if(st.classId){
+      const cb=await (await fetch('/api/classblob?classId='+st.classId)).json();
+      const iu=(cb.map.images&&cb.map.images[0].url)||cb.map.url;
+      const b=await (await fetch('/api/image?url='+encodeURIComponent(iu))).blob();
+      loadImage(URL.createObjectURL(b),'partage',restore);
+    }else if(st.img){loadImage(st.img,'partage',restore);}
+    else restore();
+  }catch(e){log('Partage introuvable : '+e.message,'er');stat('partage introuvable');}
+}
+
+function exportPdf(){
+  if(!srcImg||controls.length<2){log('Charge un parcours d\'abord','er');return;}
+  closePanels();log('Génération du PDF…','in');
+  const saveLeg=legIdx,pages=[];
+  for(let i=0;i<controls.length-1;i++){
+    legIdx=i;setLegRotation();fitLeg();              // oriente + cadre + rend
+    const lg=currentLeg(),res=legResults[i]||[];
+    const cap=lg.name+'  —  '+(res.length?res.map(r=>px2m(r.distPx).toFixed(0)+'m').join('  ·  '):'non analysé');
+    pages.push({img:dc.toDataURL('image/jpeg',0.92),cap});
+  }
+  legIdx=saveLeg;setLegRotation();fitLeg();
+  const w=window.open('','_blank');
+  if(!w){log('Pop-up bloquée — autorise les fenêtres pour exporter.','er');return;}
+  let html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Routechoice — parcours</title>'+
+    '<style>@page{size:landscape;margin:8mm}*{font-family:Nunito,Arial,sans-serif}'+
+    'body{margin:0}.pg{page-break-after:always;text-align:center;padding:6mm}'+
+    '.pg:last-child{page-break-after:auto}h2{font-size:16px;margin:0 0 4mm;color:#1c2a3a}'+
+    'img{max-width:100%;max-height:165mm;border:1px solid #ccc;border-radius:6px}</style></head><body>';
+  pages.forEach(p=>{html+='<div class="pg"><h2>'+p.cap+'</h2><img src="'+p.img+'"></div>';});
+  html+='<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},350);}</scr'+'ipt></body></html>';
+  w.document.write(html);w.document.close();
+  log('PDF : '+pages.length+' pages prêtes (fenêtre d\'impression).','ok');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Échelle
+// ════════════════════════════════════════════════════════════════════════════
+function onScaleEdit(){mpp=+$('mpp').value||1;$('i-scalesrc').textContent='manuel';updateLegUI();}
+function px2m(px){return px*mpp;}
+function applyCalibration(){
+  if(!calA||!calB){log('Place les points A et B','er');return;}
+  const dpx=Math.hypot(calB.x-calA.x,calB.y-calA.y);
+  const dm=+$('cal-dist').value;
+  if(!dm||dpx<1){log('Distance invalide','er');return;}
+  mpp=dm/dpx;$('mpp').value=mpp.toFixed(4);$('i-scalesrc').textContent='calibré';
+  log(`Échelle : ${dpx.toFixed(1)}px = ${dm}m → ${mpp.toFixed(4)} m/px`,'ok');
+  calA=calB=null;updateLegUI();render();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  ANALYSE CARTE — quantification + masque + morphologie
+// ════════════════════════════════════════════════════════════════════════════
+function nearestPalette(r,g,b){
+  let best=1e12,bk=null;
+  for(const k of PAL_KEYS){const c=PAL[k];const dr=r-c[0],dg=g-c[1],db=b-c[2];const d=dr*dr+dg*dg+db*db;if(d<best){best=d;bk=k;}}
+  return bk;
+}
+// érosion / dilatation séparables (élément carré (2r+1)²) sur masque Uint8 (0/1)
+function erodeBox(src,W,H,r){
+  if(r<=0)return src.slice();
+  const tmp=new Uint8Array(W*H),out=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){for(let x=0;x<W;x++){let m=1;for(let dx=-r;dx<=r;dx++){const nx=x+dx;if(nx<0||nx>=W){m=0;break;}if(!src[y*W+nx]){m=0;break;}}tmp[y*W+x]=m;}}
+  for(let y=0;y<H;y++){for(let x=0;x<W;x++){let m=1;for(let dy=-r;dy<=r;dy++){const ny=y+dy;if(ny<0||ny>=H){m=0;break;}if(!tmp[ny*W+x]){m=0;break;}}out[y*W+x]=m;}}
+  return out;
+}
+function dilateBox(src,W,H,r){
+  if(r<=0)return src.slice();
+  const tmp=new Uint8Array(W*H),out=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){for(let x=0;x<W;x++){let m=0;for(let dx=-r;dx<=r;dx++){const nx=x+dx;if(nx<0||nx>=W)continue;if(src[y*W+nx]){m=1;break;}}tmp[y*W+x]=m;}}
+  for(let y=0;y<H;y++){for(let x=0;x<W;x++){let m=0;for(let dy=-r;dy<=r;dy++){const ny=y+dy;if(ny<0||ny>=H)continue;if(tmp[ny*W+x]){m=1;break;}}out[y*W+x]=m;}}
+  return out;
+}
+// ouverture = érosion puis dilatation (supprime les structures fines de la classe "1")
+function opening(src,W,H,r){return dilateBox(erodeBox(src,W,H,r),W,H,r);}
+// fermeture = dilatation puis érosion (bouche les petits trous/fentes)
+function closing(src,W,H,r){return erodeBox(dilateBox(src,W,H,r),W,H,r);}
+// comble UNIQUEMENT les petits trous (< maxArea px) entièrement enclos par du
+// bloqué — homogénéise le mouchetis des bâtiments sans remplir les grandes cours
+// ouvertes (qui doivent rester franchissables).
+function fillEnclosedHoles(blk,W,H,maxArea){
+  const n=W*H,ext=new Uint8Array(n),q=new Int32Array(n);let qt=0;
+  for(let x=0;x<W;x++){if(!blk[x]&&!ext[x]){ext[x]=1;q[qt++]=x;}const b=(H-1)*W+x;if(!blk[b]&&!ext[b]){ext[b]=1;q[qt++]=b;}}
+  for(let y=0;y<H;y++){const l=y*W;if(!blk[l]&&!ext[l]){ext[l]=1;q[qt++]=l;}const r=l+W-1;if(!blk[r]&&!ext[r]){ext[r]=1;q[qt++]=r;}}
+  let qh=0;
+  while(qh<qt){const p=q[qh++],px=p%W,py=(p/W)|0;
+    if(px>0&&!blk[p-1]&&!ext[p-1]){ext[p-1]=1;q[qt++]=p-1;}
+    if(px<W-1&&!blk[p+1]&&!ext[p+1]){ext[p+1]=1;q[qt++]=p+1;}
+    if(py>0&&!blk[p-W]&&!ext[p-W]){ext[p-W]=1;q[qt++]=p-W;}
+    if(py<H-1&&!blk[p+W]&&!ext[p+W]){ext[p+W]=1;q[qt++]=p+W;}
+  }
+  // composantes de trous enclos → on ne comble que les petites
+  const seen=new Uint8Array(n),q2=new Int32Array(n),comp=new Int32Array(n);
+  for(let s=0;s<n;s++){
+    if(blk[s]||ext[s]||seen[s])continue;
+    let h=0,t=0,cn=0;q2[t++]=s;seen[s]=1;
+    while(h<t){const p=q2[h++];comp[cn++]=p;const px=p%W,py=(p/W)|0;
+      if(px>0&&!blk[p-1]&&!ext[p-1]&&!seen[p-1]){seen[p-1]=1;q2[t++]=p-1;}
+      if(px<W-1&&!blk[p+1]&&!ext[p+1]&&!seen[p+1]){seen[p+1]=1;q2[t++]=p+1;}
+      if(py>0&&!blk[p-W]&&!ext[p-W]&&!seen[p-W]){seen[p-W]=1;q2[t++]=p-W;}
+      if(py<H-1&&!blk[p+W]&&!ext[p+W]&&!seen[p+W]){seen[p+W]=1;q2[t++]=p+W;}
+    }
+    if(cn<=maxArea)for(let i=0;i<cn;i++)blk[comp[i]]=1;
+  }
+}
+
+// supprime du masque "blk" les composantes connexes (4-voisinage) plus petites
+// que minArea pixels → élimine le mouchetis JPEG sans toucher murs/bâtiments
+function removeSmallComponents(blk,W,H,minArea){
+  const n=W*H,seen=new Uint8Array(n),q=new Int32Array(n),comp=new Int32Array(n);
+  for(let s=0;s<n;s++){
+    if(!blk[s]||seen[s])continue;
+    let qh=0,qt=0,cn=0;q[qt++]=s;seen[s]=1;
+    while(qh<qt){const p=q[qh++];comp[cn++]=p;const px=p%W,py=(p/W)|0;
+      if(px>0&&blk[p-1]&&!seen[p-1]){seen[p-1]=1;q[qt++]=p-1;}
+      if(px<W-1&&blk[p+1]&&!seen[p+1]){seen[p+1]=1;q[qt++]=p+1;}
+      if(py>0&&blk[p-W]&&!seen[p-W]){seen[p-W]=1;q[qt++]=p-W;}
+      if(py<H-1&&blk[p+W]&&!seen[p+W]){seen[p+W]=1;q[qt++]=p+W;}
+    }
+    if(cn<minArea)for(let i=0;i<cn;i++)blk[comp[i]]=0;
+  }
+}
+
+function buildGrid(openR,closeR,clearR){
+  // analyse sur une version redimensionnée (≤ TARGET px) — TARGET réglable pour
+  // capter le détail (murs fins). Le rééchantillonnage lisse un peu le JPEG ;
+  // le bruit résiduel est ôté ensuite par removeSmallComponents.
+  const ow=srcImg.width,oh=srcImg.height;
+  const target=+($('p-detail')&&$('p-detail').value)||2200;
+  ascale=Math.min(1,target/Math.max(ow,oh));
+  const W=Math.max(1,Math.round(ow*ascale)),H=Math.max(1,Math.round(oh*ascale)),n=W*H;
+  const gridMpp=mpp/ascale;
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const cx=c.getContext('2d',{willReadFrequently:true});
+  cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='high';
+  cx.drawImage(srcCvs,0,0,ow,oh,0,0,W,H);
+  const data=cx.getImageData(0,0,W,H).data;
+
+  // 1. classification → lab : 1 franchissable, 2 infranchissable. Les surimpressions
+  //    (violet, brun=courbes, lignes Nord) sont "inconnu" et reclassées d'après le
+  //    pixel non-surimpression le plus proche (on regarde "dessous").
+  const lab=new Uint8Array(n), unknown=new Uint8Array(n);
+  for(let i=0;i<n;i++){
+    const di=i<<2;
+    if(data[di+3]<10){lab[i]=1;continue;}
+    const k=nearestPalette(data[di],data[di+1],data[di+2]);
+    if(OVERPRINT.has(k)){unknown[i]=1;continue;}
+    if(PASSABLE.has(k))lab[i]=1;else if(IMPASSABLE.has(k))lab[i]=2;
+  }
+  {
+    const q=new Int32Array(n),filled=new Uint8Array(n);let qh=0,qt=0;
+    for(let i=0;i<n;i++)if(!unknown[i]){filled[i]=1;q[qt++]=i;}
+    while(qh<qt){const p=q[qh++],px=p%W,py=(p/W)|0;
+      if(px>0&&unknown[p-1]&&!filled[p-1]){filled[p-1]=1;lab[p-1]=lab[p];q[qt++]=p-1;}
+      if(px<W-1&&unknown[p+1]&&!filled[p+1]){filled[p+1]=1;lab[p+1]=lab[p];q[qt++]=p+1;}
+      if(py>0&&unknown[p-W]&&!filled[p-W]){filled[p-W]=1;lab[p-W]=lab[p];q[qt++]=p-W;}
+      if(py<H-1&&unknown[p+W]&&!filled[p+W]){filled[p+W]=1;lab[p+W]=lab[p];q[qt++]=p+W;}
+    }
+  }
+  // 2. masque infranchissable (brun/violet/lignes-N déjà reclassés par voisinage).
+  const impass=new Uint8Array(n);for(let i=0;i<n;i++)if(lab[i]===2)impass[i]=1;
+  //  a. OUVERTURE : retire les murs/traits FINS franchissables (escaliers, murs
+  //     franchissables) en gardant les murs épais et les bâtiments.
+  let m=openR>0?opening(impass,W,H,openR):impass.slice();
+  //  b. FERMETURE optionnelle (défaut 0 : referme escaliers / passages étroits).
+  if(closeR>0)m=closing(m,W,H,closeR);
+  //  c. REMPLISSAGE des petits trous enclos (mouchetis) — PAS les grandes cours.
+  fillEnclosedHoles(m,W,H,Math.max(12,Math.round((3/gridMpp)**2)));
+  //  d. anti-bruit : amas isolés < ~(1,2 m)²
+  removeSmallComponents(m,W,H,Math.max(8,Math.round((1.2/gridMpp)**2)));
+  const blocked=m;
+  // masque "clearance" pour le pathfinding (marge de sécurité optionnelle)
+  const blockedClear=clearR>0?dilateBox(blocked,W,H,clearR):blocked;
+  return {W,H,blocked,blockedClear};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  GRAPHE DE VISIBILITÉ
+// ════════════════════════════════════════════════════════════════════════════
+// Ligne de vue : aucun pixel "blk" entre (x0,y0) et (x1,y1) — Bresenham
+function lineOfSight(blk,W,H,x0,y0,x1,y1){
+  let dx=Math.abs(x1-x0),dy=Math.abs(y1-y0);
+  let sx=x0<x1?1:-1, sy=y0<y1?1:-1, err=dx-dy, x=x0,y=y0;
+  for(;;){
+    if(x<0||x>=W||y<0||y>=H||blk[y*W+x])return false;
+    if(x===x1&&y===y1)break;
+    const e2=2*err;
+    if(e2>-dy){err-=dy;x+=sx;}
+    if(e2<dx){err+=dx;y+=sy;}
+  }
+  return true;
+}
+// Traçage de contours (Moore boundary) sur le masque "blocked"; renvoie polygones
+function traceContours(blk,W,H){
+  const visited=new Uint8Array(W*H);
+  const contours=[];
+  const isB=(x,y)=>x>=0&&x<W&&y>=0&&y<H&&blk[y*W+x];
+  // directions Moore (8) sens horaire
+  const dxs=[1,1,0,-1,-1,-1,0,1], dys=[0,1,1,1,0,-1,-1,-1];
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      if(!isB(x,y)||visited[y*W+x])continue;
+      // début de contour : pixel bloqué dont le voisin gauche est libre
+      if(x>0&&blk[y*W+x-1])continue;
+      const start={x,y};const poly=[];
+      let cx=x,cy=y,bdir=6; // venant de la gauche
+      let count=0,max=W*H*4;
+      do{
+        visited[cy*W+cx]=1;poly.push({x:cx,y:cy});
+        let found=false;
+        for(let i=0;i<8;i++){
+          const dir=(bdir+i)%8;const nx=cx+dxs[dir],ny=cy+dys[dir];
+          if(isB(nx,ny)){cx=nx;cy=ny;bdir=(dir+5)%8;found=true;break;}
+        }
+        if(!found)break;
+        if(++count>max)break;
+      }while(!(cx===start.x&&cy===start.y));
+      if(poly.length>=6)contours.push(poly);
+    }
+  }
+  return contours;
+}
+// Douglas–Peucker
+function simplifyPoly(pts,eps){
+  if(pts.length<=2)return pts;
+  const ds=(p,a,b)=>{const dx=b.x-a.x,dy=b.y-a.y;if(!dx&&!dy)return Math.hypot(p.x-a.x,p.y-a.y);const t=((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy);return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);};
+  const dp=(s,e)=>{let md=0,mi=0;for(let i=s+1;i<e;i++){const d=ds(pts[i],pts[s],pts[e]);if(d>md){md=d;mi=i;}}if(md>eps)return[...dp(s,mi),...dp(mi,e).slice(1)];return[pts[s],pts[e]];};
+  return dp(0,pts.length-1);
+}
+// pousse un point hors de l'obstacle vers l'espace libre
+function pushOut(blk,W,H,p,maxR){
+  if(!blk[p.y*W+p.x])return p;
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  for(let r=1;r<=maxR;r++)for(const[dx,dy]of dirs){
+    const nx=p.x+dx*r,ny=p.y+dy*r;
+    if(nx>=0&&nx<W&&ny>=0&&ny<H&&!blk[ny*W+nx])return{x:nx,y:ny};
+  }
+  return null;
+}
+function buildGraph(g,simpEps,clearR){
+  const{W,H,blocked}=g;
+  // masque avec marge de sécurité pour les tests de visibilité
+  const blockedClear=clearR>0?dilateBox(blocked,W,H,clearR):blocked;
+  g.blockedClear=blockedClear;
+  // 1. sommets = coins CONVEXES des obstacles, décalés en diagonale vers l'extérieur
+  //    (espace libre) pour avoir une bonne visibilité « autour du coin ».
+  const contours=traceContours(blocked,W,H);
+  const nodes=[];const seen=new Set();
+  const m=clearR+3;                       // marge de décalage vers l'extérieur
+  const free=(x,y)=>x>=0&&x<W&&y>=0&&y<H&&!blockedClear[y*W+x];
+  for(const poly of contours){
+    const sp=simplifyPoly(poly,simpEps);
+    const n=sp.length;if(n<3)continue;
+    for(let i=0;i<n;i++){
+      const v=sp[i],a=sp[(i-1+n)%n],c=sp[(i+1)%n];
+      let ax=v.x-a.x,ay=v.y-a.y,cx=v.x-c.x,cy=v.y-c.y;
+      const la=Math.hypot(ax,ay)||1,lc=Math.hypot(cx,cy)||1;
+      ax/=la;ay/=la;cx/=lc;cy/=lc;
+      let bx=ax+cx,by=ay+cy;const lb=Math.hypot(bx,by);
+      if(lb<0.25)continue;                // coin quasi plat → pas un vrai coin
+      bx/=lb;by/=lb;
+      // essaie les deux sens de la bissectrice : on garde celui qui tombe dans le libre
+      let nx=Math.round(v.x-bx*m),ny=Math.round(v.y-by*m);
+      if(!free(nx,ny)){nx=Math.round(v.x+bx*m);ny=Math.round(v.y+by*m);if(!free(nx,ny))continue;}
+      const key=nx+','+ny;if(seen.has(key))continue;seen.add(key);
+      nodes.push({x:nx,y:ny});
+    }
+  }
+  const cornerCount=nodes.length;
+  // 1b. maillage de fond : un sommet tous les ~13 m dans l'espace libre, sur une
+  //     lattice régulière (mémorisée). Pas en mètres → nombre de sommets ~constant.
+  const STEP=Math.max(5,Math.round(7/(mpp/ascale))),off=STEP>>1;
+  const lattice=new Map();                 // "lx,ly" → index du sommet
+  for(let ly=0,y=off;y<H;y+=STEP,ly++)for(let lx=0,x=off;x<W;x+=STEP,lx++){
+    if(!free(x,y))continue;
+    lattice.set(lx+','+ly,nodes.length);nodes.push({x,y});
+  }
+  // ── arêtes ──
+  const adj=nodes.map(()=>[]);
+  const edgeSet=new Set();
+  const addEdge=(i,j)=>{
+    const key=i<j?i*2e7+j:j*2e7+i;if(edgeSet.has(key))return;edgeSet.add(key);
+    const w=Math.hypot(nodes[i].x-nodes[j].x,nodes[i].y-nodes[j].y);
+    adj[i].push({to:j,w});adj[j].push({to:i,w});
+  };
+  // 2a. arêtes de la lattice : voisins E, S, SE, SW (couvre toutes les paires) si
+  //     ligne de vue → l'espace libre forme UN graphe connexe (anti-fragmentation).
+  for(const[k,idx]of lattice){
+    const c=k.split(',');const lx=+c[0],ly=+c[1];
+    for(const[dx,dy]of [[1,0],[0,1],[1,1],[1,-1]]){
+      const nb=lattice.get((lx+dx)+','+(ly+dy));if(nb===undefined)continue;
+      if(lineOfSight(blockedClear,W,H,nodes[idx].x,nodes[idx].y,nodes[nb].x,nodes[nb].y))addEdge(idx,nb);
+    }
+  }
+  // 2b. raccourcis : depuis chaque COIN, le plus proche sommet visible dans chaque
+  //     secteur angulaire → tracés rectilignes serrés autour des obstacles.
+  const CELL=70,WIN=2,SECT=24;
+  const buckets=new Map();
+  nodes.forEach((nd,i)=>{const kk=((nd.x/CELL)|0)+','+((nd.y/CELL)|0);if(!buckets.has(kk))buckets.set(kk,[]);buckets.get(kk).push(i);});
+  for(let i=0;i<cornerCount;i++){
+    const a=nodes[i];const cand=[];
+    const cgx=(a.x/CELL)|0,cgy=(a.y/CELL)|0;
+    for(let gx=cgx-WIN;gx<=cgx+WIN;gx++)for(let gy=cgy-WIN;gy<=cgy+WIN;gy++){
+      const b=buckets.get(gx+','+gy);if(b)for(const j of b)if(j!==i)cand.push(j);
+    }
+    cand.sort((p,q)=>((nodes[p].x-a.x)**2+(nodes[p].y-a.y)**2)-((nodes[q].x-a.x)**2+(nodes[q].y-a.y)**2));
+    const filled=new Uint8Array(SECT);let nf=0;
+    for(const j of cand){
+      if(nf>=SECT)break;
+      const b=nodes[j];
+      let s=(((Math.atan2(b.y-a.y,b.x-a.x)+Math.PI)/(2*Math.PI))*SECT)|0;if(s>=SECT)s=SECT-1;
+      if(filled[s])continue;
+      if(lineOfSight(blockedClear,W,H,a.x,a.y,b.x,b.y)){filled[s]=1;nf++;addEdge(i,j);}
+    }
+  }
+  return {nodes,adj,edges:edgeSet.size};
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  DIJKSTRA + alternatives + filtre de similarité
+// ════════════════════════════════════════════════════════════════════════════
+class MinHeap{
+  constructor(){this.k=[];this.v=[];}
+  get size(){return this.k.length;}
+  push(k,v){this.k.push(k);this.v.push(v);let i=this.k.length-1;while(i>0){const p=(i-1)>>1;if(this.k[p]<=this.k[i])break;[this.k[i],this.k[p]]=[this.k[p],this.k[i]];[this.v[i],this.v[p]]=[this.v[p],this.v[i]];i=p;}}
+  pop(){const k=this.k[0],v=this.v[0],last=this.k.length-1;this.k[0]=this.k[last];this.v[0]=this.v[last];this.k.pop();this.v.pop();let i=0;const n=this.k.length;while(true){let s=i,l=2*i+1,r=2*i+2;if(l<n&&this.k[l]<this.k[s])s=l;if(r<n&&this.k[r]<this.k[s])s=r;if(s===i)break;[this.k[i],this.k[s]]=[this.k[s],this.k[i]];[this.v[i],this.v[s]]=[this.v[s],this.v[i]];i=s;}return{k,v};}
+}
+// Dijkstra sur le graphe, avec sommets bloqués optionnels (Set d'indices)
+function dijkstra(gr,src,dst,blockedSet){
+  const N=gr.nodes.length;
+  const dist=new Float64Array(N).fill(Infinity);
+  const prev=new Int32Array(N).fill(-1);
+  const done=new Uint8Array(N);
+  dist[src]=0;const h=new MinHeap();h.push(0,src);
+  while(h.size){
+    const{v:u}=h.pop();if(done[u])continue;done[u]=1;
+    if(u===dst)break;
+    for(const e of gr.adj[u]){
+      if(blockedSet&&blockedSet.has(e.to))continue;
+      const nd=dist[u]+e.w;
+      if(nd<dist[e.to]){dist[e.to]=nd;prev[e.to]=u;h.push(nd,e.to);}
+    }
+  }
+  if(dist[dst]===Infinity)return null;
+  const idx=[];let c=dst;while(c!==-1){idx.push(c);c=prev[c];}idx.reverse();
+  const path=idx.map(i=>gr.nodes[i]);
+  return {idx,path,distPx:dist[dst]};
+}
+// ajoute temporairement P1/P2 comme sommets du graphe
+function withEndpoints(gr,p1,p2){
+  const nodes=gr.nodes.concat([p1,p2]);
+  const adj=gr.adj.map(a=>a.slice());adj.push([]);adj.push([]);
+  const s=nodes.length-2, t=nodes.length-1;
+  const blk=grid.blockedClear;
+  for(let i=0;i<nodes.length-2;i++){
+    if(lineOfSight(blk,grid.W,grid.H,p1.x,p1.y,nodes[i].x,nodes[i].y)){const w=Math.hypot(nodes[i].x-p1.x,nodes[i].y-p1.y);adj[s].push({to:i,w});adj[i].push({to:s,w});}
+    if(lineOfSight(blk,grid.W,grid.H,p2.x,p2.y,nodes[i].x,nodes[i].y)){const w=Math.hypot(nodes[i].x-p2.x,nodes[i].y-p2.y);adj[t].push({to:i,w});adj[i].push({to:t,w});}
+  }
+  if(lineOfSight(blk,grid.W,grid.H,p1.x,p1.y,p2.x,p2.y)){const w=Math.hypot(p2.x-p1.x,p2.y-p1.y);adj[s].push({to:t,w});adj[t].push({to:s,w});}
+  return {nodes,adj,s,t};
+}
+// deux chemins sont "distincts" s'il existe un obstacle franc entre eux sur une
+// longueur suffisante. On échantillonne les deux tracés en N points (à fraction
+// égale de leur longueur) et on cumule la longueur d'arc où la ligne de vue d'un
+// tracé à l'autre est coupée par un infranchissable.  (cf. addPathIfNotSimilar)
+function obstacleBetween(pathA,pathB,minSepPx){
+  const blk=grid.blockedClear, SAMPLES=80;
+  const ra=resampleByLength(pathA,SAMPLES), rb=resampleByLength(pathB,SAMPLES);
+  let LA=0;for(let i=1;i<pathA.length;i++)LA+=Math.hypot(pathA[i].x-pathA[i-1].x,pathA[i].y-pathA[i-1].y);
+  const step=LA/SAMPLES;
+  let blockedArc=0;
+  for(let i=0;i<SAMPLES;i++){
+    const a=ra[i],b=rb[i];
+    if(!lineOfSight(blk,grid.W,grid.H,a.x|0,a.y|0,b.x|0,b.y|0))blockedArc+=step;
+  }
+  return blockedArc>=minSepPx;
+}
+// rééchantillonne une polyligne en n points équidistants
+function resampleByLength(path,n){
+  if(path.length<2)return new Array(n).fill(path[0]||{x:0,y:0});
+  let total=0;const seg=[];
+  for(let i=1;i<path.length;i++){const d=Math.hypot(path[i].x-path[i-1].x,path[i].y-path[i-1].y);seg.push(d);total+=d;}
+  const out=[];const step=total/(n-1);let acc=0,si=0,sacc=0;
+  out.push(path[0]);
+  for(let k=1;k<n;k++){
+    const target=k*step;
+    while(si<seg.length&&sacc+seg[si]<target){sacc+=seg[si];si++;}
+    if(si>=seg.length){out.push(path[path.length-1]);continue;}
+    const t=(target-sacc)/seg[si];
+    out.push({x:path[si].x+(path[si+1].x-path[si].x)*t,y:path[si].y+(path[si+1].y-path[si].y)*t});
+  }
+  return out;
+}
+// rabat un point sur le pixel libre le plus proche (spirale) — un poste posé sur
+// un mur / un trait doit pouvoir être relié au graphe
+function snapToFree(p){
+  const{W,H,blockedClear}=grid;
+  const x0=Math.max(0,Math.min(W-1,p.x|0)), y0=Math.max(0,Math.min(H-1,p.y|0));
+  if(!blockedClear[y0*W+x0])return{x:x0,y:y0};
+  for(let r=1;r<60;r++){
+    for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue; // périmètre du carré
+      const nx=x0+dx,ny=y0+dy;
+      if(nx>=0&&nx<W&&ny>=0&&ny<H&&!blockedClear[ny*W+nx])return{x:nx,y:ny};
+    }
+  }
+  return{x:x0,y:y0};
+}
+// ─── A* sur grille de pixels (coords GRILLE) ─────────────────────────────────
+// Garantit la connexité : si un chemin existe au niveau pixel (passage ≥1px), il
+// est trouvé. Tampons réutilisés + estampille de génération (pas de reset O(N)).
+let _ad=null,_ag=null,_ap=null,_acl=null,_astamp=0;
+// tas binaire rapide (tableaux partagés, aucune allocation par pop)
+const _hpP=[],_hpN=[];let _hpS=0;
+function hpClear(){_hpS=0;}
+function hpPush(pr,nd){let i=_hpS++;_hpP[i]=pr;_hpN[i]=nd;while(i>0){const par=(i-1)>>1;if(_hpP[par]<=_hpP[i])break;const tp=_hpP[par];_hpP[par]=_hpP[i];_hpP[i]=tp;const tn=_hpN[par];_hpN[par]=_hpN[i];_hpN[i]=tn;i=par;}}
+function hpPop(){const rn=_hpN[0],last=--_hpS;_hpP[0]=_hpP[last];_hpN[0]=_hpN[last];let i=0;for(;;){const l=2*i+1,r=l+1;let s=i;if(l<last&&_hpP[l]<_hpP[s])s=l;if(r<last&&_hpP[r]<_hpP[s])s=r;if(s===i)break;const tp=_hpP[s];_hpP[s]=_hpP[i];_hpP[i]=tp;const tn=_hpN[s];_hpN[s]=_hpN[i];_hpN[i]=tn;i=s;}return rn;}
+function octile(ax,ay,bx,by){const dx=Math.abs(ax-bx),dy=Math.abs(ay-by);return (dx+dy)+(Math.SQRT2-2)*Math.min(dx,dy);}
+const ASTAR_DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,Math.SQRT2],[1,-1,Math.SQRT2],[-1,1,Math.SQRT2],[-1,-1,Math.SQRT2]];
+function gridAstar(s,g,extraBlocked){
+  const W=grid.W,H=grid.H,N=W*H,blk=grid.blockedClear;
+  if(!_ad||_ad.length!==N){_ad=new Float32Array(N);_ag=new Int32Array(N);_ap=new Int32Array(N);_acl=new Int32Array(N);_astamp=0;}
+  const stamp=++_astamp;
+  const sx=s.x|0,sy=s.y|0,gx=g.x|0,gy=g.y|0,si=sy*W+sx,gi=gy*W+gx;
+  if(blk[si]||blk[gi])return null;
+  _ad[si]=0;_ag[si]=stamp;_ap[si]=-1;
+  hpClear();hpPush(octile(sx,sy,gx,gy),si);
+  let exp=0;const MAXEXP=450000;            // plafond anti-explosion (spur qui scelle un passage)
+  while(_hpS>0){
+    const cur=hpPop();
+    if(_acl[cur]===stamp)continue;_acl[cur]=stamp;
+    if(cur===gi)break;
+    if(++exp>MAXEXP)break;
+    const cx=cur%W,cy=(cur/W)|0,cd=_ad[cur];
+    for(let d=0;d<8;d++){
+      const dx=ASTAR_DIRS[d][0],dy=ASTAR_DIRS[d][1];
+      const nx=cx+dx,ny=cy+dy;if(nx<0||nx>=W||ny<0||ny>=H)continue;
+      const ni=ny*W+nx;
+      if(blk[ni])continue;
+      if(dx&&dy&&(blk[cy*W+nx]||blk[ny*W+cx]))continue; // pas de coupe de coin
+      if(extraBlocked&&extraBlocked.has(ni))continue;
+      const nd=cd+ASTAR_DIRS[d][2];
+      if(_ag[ni]!==stamp||nd<_ad[ni]){_ad[ni]=nd;_ag[ni]=stamp;_ap[ni]=cur;hpPush(nd+octile(nx,ny,gx,gy),ni);}
+    }
+  }
+  if(_ag[gi]!==stamp||_acl[gi]!==stamp)return null;
+  const path=[];let c=gi;while(c!==-1){path.push({x:c%W,y:(c/W)|0});c=_ap[c];}path.reverse();
+  let dist=0;for(let k=1;k<path.length;k++)dist+=Math.hypot(path[k].x-path[k-1].x,path[k].y-path[k-1].y);
+  return {path,distPx:dist};
+}
+function discCells(cx,cy,R){
+  const W=grid.W,H=grid.H,set=new Set(),R2=R*R;
+  const x0=Math.max(0,(cx-R)|0),x1=Math.min(W-1,(cx+R)|0),y0=Math.max(0,(cy-R)|0),y1=Math.min(H-1,(cy+R)|0);
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const dx=x-cx,dy=y-cy;if(dx*dx+dy*dy<=R2)set.add(y*W+x);}
+  return set;
+}
+
+// recherche des choix d'itinéraires.  p1,p2,minSep sont en coords IMAGE ;
+// le calcul se fait en coords GRILLE puis tout est reconverti en coords image.
+function findRouteChoices(p1img,p2img,maxRatio,minSepImgPx,maxK){
+  const p1=snapToFree({x:p1img.x*ascale,y:p1img.y*ascale});
+  const p2=snapToFree({x:p2img.x*ascale,y:p2img.y*ascale});
+  const minSepPx=minSepImgPx*ascale;
+  const base=gridAstar(p1,p2,null);
+  if(!base)return [];
+  const bestDist=base.distPx;
+  const accepted=[base];
+  // alternatives : on bloque un disque le long du chemin de base et on relance
+  // → force un détour ; on filtre ensuite par "obstacle franc entre les tracés".
+  const cands=[];const seen=new Set();
+  const NS=8, blockR=Math.max(3,Math.round(minSepPx*0.7));
+  const rs=resampleByLength(base.path,NS+2);
+  for(let k=1;k<=NS;k++){
+    const c=rs[k];
+    const alt=gridAstar(p1,p2,discCells(c.x,c.y,blockR));
+    if(!alt||alt.distPx>bestDist*maxRatio)continue;
+    const key=Math.round(alt.distPx/3)+':'+alt.path.length;
+    if(seen.has(key))continue;seen.add(key);
+    cands.push(alt);
+  }
+  cands.sort((a,b)=>a.distPx-b.distPx);
+  for(const c of cands){
+    if(accepted.length>=maxK)break;
+    let distinct=true;
+    for(const acc of accepted){
+      if(!obstacleBetween(c.path,acc.path,minSepPx)){distinct=false;break;}
+    }
+    if(distinct)accepted.push(c);
+  }
+  accepted.sort((a,b)=>a.distPx-b.distPx);
+  // string-pulling + reconversion grille → image
+  const inv=1/ascale;
+  const out=accepted.map((r,i)=>{
+    const pulled=stringPull(r.path);
+    let d=0;for(let k=1;k<pulled.length;k++)d+=Math.hypot(pulled[k].x-pulled[k-1].x,pulled[k].y-pulled[k-1].y);
+    return {
+      path:pulled.map(p=>({x:p.x*inv,y:p.y*inv})),
+      distPx:d*inv,
+      label:'Choix '+(i+1),
+      color:COLORS[i%COLORS.length],
+    };
+  });
+  out.sort((a,b)=>a.distPx-b.distPx);
+  out.forEach((r,i)=>{r.label='Choix '+(i+1);r.color=COLORS[i%COLORS.length];});
+  return out;
+}
+// tend la corde : remplace une polyligne par les plus longs segments en ligne de vue
+function stringPull(path){
+  if(path.length<=2)return path;
+  const blk=grid.blockedClear,W=grid.W,H=grid.H;
+  const out=[path[0]];let i=0;
+  while(i<path.length-1){
+    let j=path.length-1;
+    for(;j>i+1;j--){if(lineOfSight(blk,W,H,path[i].x|0,path[i].y|0,path[j].x|0,path[j].y|0))break;}
+    out.push(path[j]);i=j;
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Pilotage analyse
+// ════════════════════════════════════════════════════════════════════════════
+function doAnalysis(){
+  if(!srcImg){log('Charge une image','er');return;}
+  stat('analyse…');log('Analyse de la carte…','in');
+  setTimeout(()=>{
+    const t0=performance.now();
+    const openR=+$('p-thin').value, closeR=+$('p-close').value, clearR=+$('p-clear').value;
+    grid=buildGrid(openR,closeR,clearR);
+    const dt=((performance.now()-t0)/1000).toFixed(2);
+    let nb=0;for(let i=0;i<grid.blocked.length;i++)if(grid.blocked[i])nb++;
+    $('i-blocked').textContent=(nb/grid.blocked.length*100).toFixed(1)+'%';
+    $('i-graph').textContent=`${grid.W}×${grid.H}`;
+    $('i-time').textContent=dt+'s';
+    buildOverlayImage();
+    if(pendingBrush){applyBrushStrokes(pendingBrush);pendingBrush=null;log('Corrections pinceau réappliquées','ok');}
+    // on CONSERVE les choix déjà calculés (ré-analyser un poste écrase juste ce poste)
+    $('btn-analyze').disabled=false;$('btn-analyze-all').disabled=false;
+    updateLegUI();
+    log(`Analyse OK en ${dt}s — grille ${grid.W}×${grid.H}, ${(nb/grid.blocked.length*100).toFixed(1)}% bloqué`,'ok');
+    stat('carte prête');render();
+  },10);
+}
+let overlayCvs=null;
+function buildOverlayImage(){
+  const{W,H,blocked}=grid;const out=new ImageData(W,H);
+  for(let i=0;i<W*H;i++){const di=i<<2;
+    if(blocked[i]){out.data[di]=255;out.data[di+1]=59;out.data[di+2]=59;out.data[di+3]=150;}
+    else{out.data[di]=57;out.data[di+1]=230;out.data[di+2]=90;out.data[di+3]=38;}
+  }
+  overlayCvs=document.createElement('canvas');overlayCvs.width=W;overlayCvs.height=H;
+  overlayCvs.getContext('2d').putImageData(out,0,0);
+}
+function cycleOverlay(){
+  if(!grid){log('Analyse d\'abord','er');return;}
+  overlayMode=(overlayMode+1)%2;
+  $('btn-overlay').textContent='Calque : '+['off','masque'][overlayMode];
+  render();
+}
+
+function analyzeCurrentLeg(){
+  if(!grid){log('Analyse la carte d\'abord','er');return;}
+  const lg=currentLeg();if(!lg){log('Pas de tronçon','er');return;}
+  stat('calcul…');log(`Calcul ${lg.name}…`,'in');
+  setTimeout(()=>{
+    const t0=performance.now();
+    const ratio=1+(+$('p-ratio').value)/100;
+    const minSepPx=(+$('p-sep').value)/mpp;
+    const maxK=+$('p-maxk').value;
+    const res=findRouteChoices(lg.p1,lg.p2,ratio,minSepPx,maxK);
+    legResults[legIdx]=res;
+    const dt=((performance.now()-t0)/1000).toFixed(2);
+    if(!res.length)log('Aucun chemin trouvé (P1 ou P2 sur zone bloquée ?)','er');
+    else res.forEach(r=>log(`${r.label} : ${px2m(r.distPx).toFixed(0)}m`,'ok'));
+    log(`${lg.name} — ${res.length} choix en ${dt}s`);
+    stat(res.length+' choix');renderChoices();focusLeg();
+  },10);
+}
+function analyzeAllLegs(){
+  if(!grid){log('Analyse la carte d\'abord','er');return;}
+  const ratio=1+(+$('p-ratio').value)/100, minSepPx=(+$('p-sep').value)/mpp, maxK=+$('p-maxk').value;
+  const t0=performance.now();const total=controls.length-1;
+  log('Analyse de tous les tronçons…','in');
+  // traitement tronçon par tronçon (yield entre chaque) → UI réactive + progression
+  let i=0;
+  (function step(){
+    if(i>=total){log(`Parcours complet analysé en ${((performance.now()-t0)/1000).toFixed(1)}s`,'ok');stat('terminé');render();renderChoices();return;}
+    stat(`calcul ${i+1}/${total}…`);
+    legResults[i]=findRouteChoices({x:controls[i].x,y:controls[i].y},{x:controls[i+1].x,y:controls[i+1].y},ratio,minSepPx,maxK);
+    i++;render();
+    setTimeout(step,0);
+  })();
+}
+
+// ─── Ajout d'un choix manuel (par points de passage) ───
+function startAddChoice(){
+  if(!grid){log('Analyse la carte d\'abord','er');return;}
+  if(!currentLeg()){log('Sélectionne un tronçon','er');return;}
+  manualMode=true;manualPts=[];$('i-manpts').textContent='0';
+  $('addchoice-panel').style.display='inline';$('btn-addchoice').style.display='none';
+  brushMode='off';setBrush('off');closePanels();
+  log('Mode ajout de choix : clique les points de passage.','in');render();
+}
+function cancelAddChoice(){
+  manualMode=false;manualPts=[];
+  $('addchoice-panel').style.display='none';$('btn-addchoice').style.display='';
+  render();
+}
+function validateAddChoice(){
+  const lg=currentLeg();if(!lg){cancelAddChoice();return;}
+  // chemin P1 → points → P2, chaque segment via A* (suit le terrain)
+  const wp=[lg.p1,...manualPts,lg.p2].map(p=>snapToFree({x:p.x*ascale,y:p.y*ascale}));
+  let full=null,ok=true;
+  for(let i=0;i<wp.length-1;i++){
+    const seg=gridAstar(wp[i],wp[i+1],null);
+    if(!seg){ok=false;break;}
+    const pulled=stringPull(seg.path);
+    full=full?full.concat(pulled.slice(1)):pulled;
+  }
+  if(!ok||!full){log('Choix manuel impossible (point sur zone bloquée ?)','er');return;}
+  let d=0;for(let k=1;k<full.length;k++)d+=Math.hypot(full[k].x-full[k-1].x,full[k].y-full[k-1].y);
+  const inv=1/ascale;
+  const res=legResults[legIdx]||(legResults[legIdx]=[]);
+  res.push({path:full.map(p=>({x:p.x*inv,y:p.y*inv})),distPx:d*inv,manual:true,
+            label:'Manuel',color:COLORS[res.length%COLORS.length]});
+  log(`Choix manuel ajouté : ${px2m(d*inv).toFixed(0)}m`,'ok');
+  cancelAddChoice();renderChoices();render();
+}
+// réattribue des couleurs distinctes aux choix restants (par position) → jamais
+// deux choix de la même couleur après suppression/ajout.
+function recolor(res){res.forEach((r,i)=>{r.color=COLORS[i%COLORS.length];});}
+function deleteChoice(i){
+  const res=legResults[legIdx];if(!res)return;
+  res.splice(i,1);
+  res.forEach((r,k)=>{if(!r.manual)r.label='Choix '+(k+1);});
+  recolor(res);renderChoices();render();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Tronçons (legs)
+// ════════════════════════════════════════════════════════════════════════════
+function currentLeg(){
+  if(controls.length<2)return null;
+  const a=controls[legIdx],b=controls[legIdx+1];
+  if(!a||!b)return null;
+  return {p1:{x:a.x,y:a.y},p2:{x:b.x,y:b.y},name:`${a.code} → ${b.code}`,a,b};
+}
+function prevLeg(){if(legIdx>0){legIdx--;updateLegUI();focusLeg();}}
+function nextLeg(){if(legIdx<controls.length-2){legIdx++;updateLegUI();focusLeg();}}
+function updateLegUI(){
+  const lg=currentLeg();
+  if(!lg){$('leg-cur').textContent=controls.length?'1 poste':'—';$('i-straight').textContent='—';$('btn-analyze').disabled=true;$('btn-analyze-all').disabled=true;return;}
+  $('leg-cur').textContent=`${lg.name}  (${legIdx+1}/${controls.length-1})`;
+  $('i-straight').textContent=px2m(Math.hypot(lg.p2.x-lg.p1.x,lg.p2.y-lg.p1.y)).toFixed(0)+' m';
+  $('btn-analyze').disabled=!grid;$('btn-analyze-all').disabled=!grid;
+  renderChoices();
+}
+function renderChoices(){
+  const el=$('choices');el.innerHTML='';
+  const res=legResults[legIdx];
+  if(!res||!res.length){el.innerHTML='<span class="empty">Aucun choix — appuie sur Analyser.</span>';return;}
+  recolor(res);
+  const best=Math.min(...res.map(r=>r.distPx));
+  res.forEach((r,i)=>{
+    const chip=document.createElement('div');chip.className='chip';
+    const rel=r.distPx>best+0.5?'+'+((r.distPx/best-1)*100).toFixed(0)+'%':'court';
+    chip.innerHTML=`<span class="dist" style="color:${r.color}">${px2m(r.distPx).toFixed(0)}m</span>
+      <span class="rel">${rel}</span>
+      <span class="del" title="Supprimer">✕</span>`;
+    chip.addEventListener('mouseenter',()=>{render();drawPath(r.path,r.color,true);});
+    chip.addEventListener('mouseleave',()=>render());
+    chip.querySelector('.del').addEventListener('click',e=>{e.stopPropagation();deleteChoice(i);});
+    el.appendChild(chip);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Rendu
+// ════════════════════════════════════════════════════════════════════════════
+function render(){
+  if(!srcImg)return;
+  resize();ctx.clearRect(0,0,dc.width,dc.height);
+  // carte (avec rotation de vue)
+  ctx.save();ctx.translate(panX,panY);ctx.rotate(viewRot);ctx.scale(zoom,zoom);
+  ctx.imageSmoothingEnabled=zoom<1;
+  ctx.drawImage(srcCvs,0,0);
+  if(overlayMode>=1&&overlayCvs){
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(overlayCvs,0,0,grid.W,grid.H,0,0,srcImg.width,srcImg.height);
+  }
+  ctx.restore();
+  // graphe (sommets en coords grille → image)
+  if(overlayMode>=2&&graph){
+    const iv=1/ascale;
+    ctx.strokeStyle='rgba(91,140,255,.25)';ctx.lineWidth=0.5;
+    ctx.beginPath();
+    for(let i=0;i<graph.nodes.length;i++){const a=i2s(graph.nodes[i].x*iv,graph.nodes[i].y*iv);for(const e of graph.adj[i]){if(e.to>i){const b=i2s(graph.nodes[e.to].x*iv,graph.nodes[e.to].y*iv);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}}}
+    ctx.stroke();
+    ctx.fillStyle='#5b8cff';
+    for(const nd of graph.nodes){const s=i2s(nd.x*iv,nd.y*iv);ctx.fillRect(s.x-1,s.y-1,2,2);}
+  }
+  // tracé de tous les postes + lignes du parcours
+  if(controls.length){
+    ctx.strokeStyle='rgba(230,52,153,.5)';ctx.lineWidth=Math.max(1,1.5*zoom);ctx.beginPath();
+    controls.forEach((c,i)=>{const s=i2s(c.x,c.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
+    ctx.stroke();
+    controls.forEach((c,i)=>drawControl(c,i));
+  }
+  // choix du tronçon courant
+  const res=legResults[legIdx];
+  if(res){res.forEach(r=>drawPath(r.path,r.color,false));drawChoiceLabels(res);}
+  // surbrillance tronçon courant
+  const lg=currentLeg();
+  if(lg){drawControl(lg.a,legIdx,true);drawControl(lg.b,legIdx+1,true);}
+  // points de passage du choix manuel en cours
+  if(manualMode&&lg){
+    const seq=[lg.p1,...manualPts,lg.p2];
+    ctx.strokeStyle='rgba(34,211,238,.8)';ctx.lineWidth=Math.max(1.5,2*zoom);ctx.setLineDash([6,4]);
+    ctx.beginPath();seq.forEach((p,j)=>{const s=i2s(p.x,p.y);j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});ctx.stroke();ctx.setLineDash([]);
+    manualPts.forEach((p,i)=>{const s=i2s(p.x,p.y),r=Math.max(4,6*zoom);ctx.beginPath();ctx.arc(s.x,s.y,r,0,7);ctx.fillStyle='#22d3ee';ctx.fill();ctx.fillStyle='#0d0f14';ctx.font=`bold ${Math.max(8,9*zoom)}px monospace`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(i+1,s.x,s.y);});
+  }
+  // calibration
+  if(calA)drawDot(calA,'#00ccff','A');
+  if(calB){drawDot(calB,'#00ccff','B');if(calA){const s1=i2s(calA.x,calA.y),s2=i2s(calB.x,calB.y);ctx.strokeStyle='rgba(0,204,255,.7)';ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(s1.x,s1.y);ctx.lineTo(s2.x,s2.y);ctx.stroke();ctx.setLineDash([]);}}
+  // tracé manuel du parcours en cours
+  if(courseMode)drawCoursePts();
+}
+function drawControl(c,i,hl){
+  const s=i2s(c.x,c.y),r=Math.max(4,7*zoom)*3.5;
+  ctx.beginPath();
+  if(c.type===0){ // départ = triangle
+    ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();
+  }else if(c.type===2){ // arrivée = double cercle
+    ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);
+  }else ctx.arc(s.x,s.y,r,0,7);
+  ctx.strokeStyle=hl?'#fbbf24':'#e63499';ctx.lineWidth=hl?Math.max(2,2.5*zoom):Math.max(1,1.6*zoom);ctx.stroke();
+  if(zoom>0.25||hl){
+    const fs=Math.max(9,11*zoom);ctx.font=`bold ${fs}px monospace`;
+    ctx.fillStyle=hl?'#fbbf24':'#e63499';ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillText(c.code,s.x,s.y-r-2);
+  }
+}
+function drawDot(p,col,lbl){const s=i2s(p.x,p.y),r=Math.max(5,7*zoom);ctx.beginPath();ctx.arc(s.x,s.y,r,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.font='bold 11px monospace';ctx.fillText(lbl,s.x,s.y-r-2);}
+function drawPath(path,color,thick){
+  if(!path||path.length<2)return;
+  ctx.beginPath();
+  path.forEach((p,j)=>{const s=i2s(p.x,p.y);j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
+  ctx.strokeStyle=color;ctx.lineWidth=thick?Math.max(3,4.5*zoom):Math.max(2,3*zoom);
+  ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
+}
+// point à la fraction f (0..1) de la longueur d'arc d'un tracé
+function pointAtFraction(path,f){
+  if(!path||!path.length)return null;if(path.length===1)return path[0];
+  let total=0;const seg=[];
+  for(let i=1;i<path.length;i++){const d=Math.hypot(path[i].x-path[i-1].x,path[i].y-path[i-1].y);seg.push(d);total+=d;}
+  const target=total*Math.min(1,Math.max(0,f));let acc=0;
+  for(let i=0;i<seg.length;i++){if(acc+seg[i]>=target){const t=seg[i]?(target-acc)/seg[i]:0;return{x:path[i].x+(path[i+1].x-path[i].x)*t,y:path[i].y+(path[i+1].y-path[i].y)*t};}acc+=seg[i];}
+  return path[path.length-1];
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  if(ctx.roundRect){ctx.roundRect(x,y,w,h,r);return;}
+  ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+// étiquettes de distance : étalées le long de chaque tracé + évitement de collision,
+// fond blanc arrondi, texte de la couleur du choix.
+function drawChoiceLabels(res){
+  const placed=[];const fs=Math.max(11,12*zoom);
+  ctx.font=`700 ${fs}px Nunito,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  res.forEach((r,i)=>{
+    const a=pointAtFraction(r.path,(i+0.5)/res.length);if(!a)return;
+    const s=i2s(a.x,a.y),text=px2m(r.distPx).toFixed(0)+'m';
+    const w=ctx.measureText(text).width+12,h=fs+8;
+    let x=s.x-w/2,y=s.y-h/2,tries=0;
+    while(tries<24&&placed.some(p=>!(x+w<p.x||x>p.x+p.w||y+h<p.y||y>p.y+p.h))){y-=h+3;tries++;}
+    placed.push({x,y,w,h});
+    roundRect(x,y,w,h,8);ctx.fillStyle='rgba(255,255,255,.93)';ctx.fill();
+    ctx.lineWidth=1.5;ctx.strokeStyle=r.color;ctx.stroke();
+    ctx.fillStyle=r.color;ctx.fillText(text,x+w/2,y+h/2);
+  });
+}
+
+stat('en attente');
+renderChoices();
+// détecte le serveur local pour adapter l'indice du panneau Fichier
+fetch('/api/image').then(r=>{
+  $('proxy-hint').innerHTML = r.status===404
+    ? '⚠️ Serveur local absent : le chargement par lien ne marchera pas. Lance <b>python server.py</b> puis ouvre <b>http://localhost:8765/</b>. Sinon dépose les fichiers ci-dessous.'
+    : '✓ Serveur local actif : colle le lien et charge.';
+}).catch(()=>{$('proxy-hint').textContent='Le chargement par lien nécessite le serveur local (python server.py).';});
+tryLoadShare();   // ouvre un parcours partagé si l'URL contient ?share=…
+// PWA : service worker (coquille hors-ligne) — sans effet en file://
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
