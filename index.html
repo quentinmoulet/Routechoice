@@ -567,7 +567,7 @@ function drawCoursePts(){
   if(n>1){ctx.strokeStyle='rgba(230,52,153,.6)';ctx.lineWidth=Math.max(1.5,2*zoom);ctx.beginPath();coursePts.forEach((p,i)=>{const s=i2s(p.x,p.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});ctx.stroke();}
   coursePts.forEach((p,i)=>{
     const s=i2s(p.x,p.y),sel=i===selPt;
-    let r=Math.max(7,10*zoom)*5.0; if(i===0)r*=1.10; else if(i===n-1)r*=0.85;
+    let r=Math.max(1.5,50*zoom); if(i===0)r*=1.10; else if(i===n-1)r*=0.85;
     ctx.beginPath();
     if(i===0){ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();}
     else if(i===n-1){ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);}
@@ -919,8 +919,8 @@ function buildGrid(openR,closeR,clearR){
     // rendue dépend du fond → on accepte une plage large et une saturation basse.
     if(dl>0&&mx>70&&sat>0.09){
       let h;if(mx===r)h=(g-b)/dl;else if(mx===g)h=(b-r)/dl+2;else h=(r-g)/dl+4;h*=60;if(h<0)h+=360;
-      if(h>=250&&h<300){violet[i]=1;continue;}                 // violet (OOB/barrière)
-      else if(h>=300&&h<=350){                                  // magenta/rose
+      if(h>=246&&h<318){violet[i]=1;continue;}                 // violet→rouge-violet (OOB/barrière)
+      else if(h>=318&&h<=352){                                  // magenta/rose du parcours
         if(sat>0.5){unknown[i]=1;continue;}                     // saturé = parcours → transparent
         else{violet[i]=1;continue;}                             // désaturé = violet OOB sur fond chaud
       }
@@ -1514,7 +1514,7 @@ function render(){
   }
   // tracé de tous les postes + lignes du parcours
   if(showCourse&&controls.length){
-    ctx.strokeStyle='rgba(230,52,153,.5)';ctx.lineWidth=Math.max(1,1.5*zoom);ctx.beginPath();
+    ctx.strokeStyle='rgba(230,52,153,.5)';ctx.lineWidth=Math.max(2,3*zoom);ctx.beginPath();
     controls.forEach((c,i)=>{const s=i2s(c.x,c.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
     ctx.stroke();
     controls.forEach((c,i)=>drawControl(c,i));
@@ -1539,20 +1539,21 @@ function render(){
   if(courseMode)drawCoursePts();
 }
 function drawControl(c,i,hl){
-  let r=Math.max(4,7*zoom)*5.0;
+  // rayon proportionnel au zoom (suit la carte ; plancher minime pour rester visible)
+  let r=Math.max(1.5,35*zoom);
   if(c.type===0)r*=1.10;          // départ +10%
   else if(c.type===2)r*=0.85;     // arrivée -15%
-  const s=i2s(c.x,c.y);
+  const s=i2s(c.x,c.y),col=hl?'#3d9bff':'#e63499';
   ctx.beginPath();
   if(c.type===0){ // départ = triangle
     ctx.moveTo(s.x,s.y-r);ctx.lineTo(s.x+r,s.y+r);ctx.lineTo(s.x-r,s.y+r);ctx.closePath();
   }else if(c.type===2){ // arrivée = double cercle
     ctx.arc(s.x,s.y,r,0,7);ctx.moveTo(s.x+r*1.5,s.y);ctx.arc(s.x,s.y,r*1.5,0,7);
   }else ctx.arc(s.x,s.y,r,0,7);
-  ctx.strokeStyle=hl?'#fbbf24':'#e63499';ctx.lineWidth=hl?Math.max(4,5*zoom):Math.max(2,3.2*zoom);ctx.stroke();
+  ctx.strokeStyle=col;ctx.lineWidth=hl?Math.max(1.5,5*zoom):Math.max(1,3.2*zoom);ctx.stroke();
   if(zoom>0.25||hl){
     const fs=Math.max(9,11*zoom);ctx.font=`bold ${fs}px monospace`;
-    ctx.fillStyle=hl?'#fbbf24':'#e63499';ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='bottom';
     ctx.fillText(c.code,s.x,s.y-r-2);
   }
 }
