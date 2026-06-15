@@ -443,9 +443,9 @@ MA.addEventListener('mousedown',e=>{
   if(!srcImg)return;
   if(e.button===1||(e.button===0&&e.altKey)){panning=true;panS={x:e.clientX-panX,y:e.clientY-panY};MA.style.cursor='grab';e.preventDefault();return;}
   if(e.button!==0)return;
-  const p=s2i(e.clientX,e.clientY),placing=courseMode||traceMode;
+  const p=s2i(e.clientX,e.clientY),placing=(courseMode||traceMode)&&!manualMode;
   if(placing){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_courseDrag=true;_md={moved:0,p};render();e.preventDefault();return;}}
-  if(brushMode!=='off'&&grid&&!placing){brushing=true;paintAt(p);e.preventDefault();return;}
+  if(brushMode!=='off'&&grid&&!placing&&!manualMode){brushing=true;paintAt(p);e.preventDefault();return;}
   _md={x:e.clientX,y:e.clientY,px:panX,py:panY,moved:0,p,pan:true};
   e.preventDefault();
 });
@@ -463,7 +463,7 @@ document.addEventListener('mouseup',()=>{
   if(brushing){brushing=false;if(brushDirty)rebuildAfterBrush();}
   if(_md){
     if(_courseDrag){_courseDrag=false;if(traceMode)onTracePointMoved(selPt);}
-    else if(_md.moved<5){if(courseMode||traceMode)addPt(_md.p);else handleTap(_md.p);}
+    else if(_md.moved<5){if((courseMode||traceMode)&&!manualMode)addPt(_md.p);else handleTap(_md.p);}
     _md=null;
   }
 });
@@ -482,8 +482,8 @@ MA.addEventListener('touchstart',e=>{
   if(!srcImg)return;
   if(e.touches.length===1){
     const t=e.touches[0],p=s2i(t.clientX,t.clientY);
-    if(courseMode||traceMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_touch={mode:'cpt'};render();e.preventDefault();return;}}
-    if(brushMode!=='off'&&grid&&!courseMode&&!traceMode){brushing=true;paintAt(p);_touch={mode:'brush'};e.preventDefault();return;}
+    if((courseMode||traceMode)&&!manualMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_touch={mode:'cpt'};render();e.preventDefault();return;}}
+    if(brushMode!=='off'&&grid&&!courseMode&&!traceMode&&!manualMode){brushing=true;paintAt(p);_touch={mode:'brush'};e.preventDefault();return;}
     _touch={mode:'pan',x:t.clientX,y:t.clientY,px:panX,py:panY,moved:0,downP:p};
   }else if(e.touches.length===2){
     const a=e.touches[0],b=e.touches[1];
@@ -509,7 +509,7 @@ MA.addEventListener('touchmove',e=>{
 },{passive:false});
 MA.addEventListener('touchend',e=>{
   if(_touch){
-    if(_touch.mode==='pan'&&_touch.moved<10){if(courseMode||traceMode)addPt(_touch.downP);else handleTap(_touch.downP);}
+    if(_touch.mode==='pan'&&_touch.moved<10){if((courseMode||traceMode)&&!manualMode)addPt(_touch.downP);else handleTap(_touch.downP);}
     if(_touch.mode==='cpt'&&traceMode)onTracePointMoved(selPt);
     if(_touch.mode==='brush'){brushing=false;if(brushDirty)rebuildAfterBrush();}
   }
@@ -695,8 +695,9 @@ function parseWorldFile(text){
   worldFile={A:v[0],D:v[1],B:v[2],E:v[3],C:v[4],F:v[5]};
   mpp=Math.sqrt(v[0]*v[0]+v[1]*v[1]);   // taille d'un pixel = m/px (CRS métrique)
   $('mpp').value=mpp.toFixed(4);$('i-scalesrc').textContent='world file';
-  log(`World file : échelle ${mpp.toFixed(3)} m/px. Choisis l'EPSG pour le GPX.`,'ok');
+  log(`World file : échelle ${mpp.toFixed(3)} m/px. Choisis l'EPSG si besoin (Lambert-93 par défaut).`,'ok');
   $('epsg-row').style.display='';updateGpxBtn();updateLegUI();
+  if(xmlData&&srcImg&&$('xml-course').value!=='')useXmlCourse(true);   // re-cale le parcours
   return true;
 }
 function loadImageFile(f){
@@ -743,23 +744,28 @@ function parseXmlCourse(text){
   log(`XML chargé : ${courses.length} parcours. Choisis-en un.`,'ok');
   if(srcImg)useXmlCourse();
 }
-function useXmlCourse(){
+function useXmlCourse(reposition){
   if(!xmlData)return;
   if(!srcImg){log('Charge d\'abord l\'image de la carte (Fichier).','er');return;}
   const co=xmlData.courses[+$('xml-course').value];if(!co)return;
   const e=xmlData.ext,W=srcImg.width,H=srcImg.height;
-  const toPix=(mmx,mmy)=>({x:Math.round((mmx-e.tlx)/(e.brx-e.tlx)*W),y:Math.round((e.tly-mmy)/(e.tly-e.bry)*H)});
+  // Si carte géoréférencée (world file + EPSG) : on place via lat/lng → pixel (exact,
+  // indépendant du cadrage du JPEG). Sinon : via l'étendue OCAD en mm (image = carte).
+  const useGeo=!!(worldFile&&geoEpsg&&window.proj4);
+  const toPixMm=(mmx,mmy)=>({x:Math.round((mmx-e.tlx)/(e.brx-e.tlx)*W),y:Math.round((e.tly-mmy)/(e.tly-e.bry)*H)});
   controls=[];
   co.seq.forEach(sc=>{
     const cd=xmlData.ctrlMap[sc.id];if(!cd)return;
-    const p=toPix(cd.mmx,cd.mmy);
+    let p=(useGeo&&cd.lat!=null&&cd.lng!=null)?latLngToPixel(cd.lat,cd.lng):null;
+    if(!p)p=toPixMm(cd.mmx,cd.mmy);
     const t=(sc.type==='Start'||cd.type==='Start')?0:((sc.type==='Finish'||cd.type==='Finish')?2:1);
-    controls.push({x:p.x,y:p.y,code:sc.id,type:t,lat:cd.lat,lng:cd.lng});
+    controls.push({x:Math.round(p.x),y:Math.round(p.y),code:sc.id,type:t,lat:cd.lat,lng:cd.lng});
   });
   mapScale=xmlData.scale||mapScale;
   fitGeoFromControls();updateGpxBtn();
-  legIdx=0;legResults={};updateLegUI();focusLeg();closePanels();
-  log(`Parcours « ${co.name} » : ${controls.length} postes placés.`,'ok');stat(controls.length+' postes');
+  legIdx=0;legResults={};updateLegUI();focusLeg();
+  if(!reposition)closePanels();
+  log(`Parcours « ${co.name} » : ${controls.length} postes${useGeo?' (géoréf)':''}.`,'ok');stat(controls.length+' postes');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1021,7 +1027,15 @@ function pixelToLatLng(px,py){
   if(geoAffine){const a=geoAffine;return {lng:a.lng[0]*px+a.lng[1]*py+a.lng[2],lat:a.lat[0]*px+a.lat[1]*py+a.lat[2]};}
   return null;
 }
-function onEpsgChange(){geoEpsg=$('epsg').value||null;updateGpxBtn();}
+// lat/lng → pixel via le world file (proj WGS84→projeté puis inverse de l'affine)
+function latLngToPixel(lat,lng){
+  if(!(worldFile&&geoEpsg&&window.proj4))return null;
+  let X,Y;try{const xy=proj4('EPSG:4326',geoEpsg,[lng,lat]);X=xy[0];Y=xy[1];}catch(e){return null;}
+  const wf=worldFile,det=wf.A*wf.E-wf.B*wf.D;if(Math.abs(det)<1e-12)return null;
+  const dx=X-wf.C,dy=Y-wf.F;
+  return {x:(dx*wf.E-dy*wf.B)/det, y:(wf.A*dy-wf.D*dx)/det};
+}
+function onEpsgChange(){geoEpsg=$('epsg').value||null;updateGpxBtn();if(xmlData&&srcImg&&$('xml-course').value!=='')useXmlCourse(true);}
 function updateGpxBtn(){const b=$('btn-gpx');if(b)b.disabled=!hasGeo();}
 function applyCalibration(){
   if(!calA||!calB){log('Place les points A et B','er');return;}
@@ -1754,11 +1768,9 @@ function render(){
     ctx.stroke();
     controls.forEach((c,i)=>drawControl(c,i));
   }
-  // choix : en traçage on affiche TOUS les tronçons ; sinon le tronçon courant
-  if(traceMode){
-    for(const k in legResults){const rr=legResults[k];if(rr)rr.forEach(r=>drawPath(r.path,r.color,false));}
-    const cur=legResults[legIdx];if(cur&&cur.length)drawChoiceLabels(cur);
-  }else{
+  // choix : UNIQUEMENT le tronçon courant (dans tous les modes) ; rien pendant le
+  // tracé manuel d'un parcours (mode Parcours), où on positionne seulement les postes.
+  if(!courseMode){
     const res=legResults[legIdx];
     if(res){res.forEach(r=>drawPath(r.path,r.color,false));drawChoiceLabels(res);}
   }
