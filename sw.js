@@ -1,8 +1,8 @@
 // Service worker — coquille hors-ligne. L'analyse tourne dans le navigateur, donc
 // l'app marche sans réseau ; seuls Livelox (/api/*) et le partage requièrent le net.
 // HTML : réseau d'abord (pour toujours avoir la dernière version), cache en repli.
-const CACHE = 'routechoice-v2';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'routechoice-v3';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg', './proj4.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(() => {}));

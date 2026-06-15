@@ -43,7 +43,9 @@
       "Bash(taskkill //F //IM python.exe)",
       "Bash(taskkill //F //IM pythonw.exe)",
       "Bash(curl -s -o /dev/null -w \"index HTTP %{http_code}\\\\n\" \"http://127.0.0.1:8765/index.html\")",
-      "Bash(curl -s -o /dev/null -w \"classblob HTTP %{http_code}\\\\n\" \"http://127.0.0.1:8765/api/classblob?classId=1177812\")"
+      "Bash(curl -s -o /dev/null -w \"classblob HTTP %{http_code}\\\\n\" \"http://127.0.0.1:8765/api/classblob?classId=1177812\")",
+      "Bash(curl -s -L \"https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js\" -o proj4.js -w \"HTTP %{http_code} size=%{size_download}\\\\n\")",
+      "Bash(cd \"C:/Users/qmoul/Documents/Orientering/Projet code/Routechoice\" && cp \"C:/Users/qmoul/Downloads/69 Croix Rousse Route Choice.Courses.xml\" test-data/croixrousse.xml && wc -l test-data/croixrousse.xml && echo \"copied\")"
     ]
   }
 }

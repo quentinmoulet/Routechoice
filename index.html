@@ -147,6 +147,7 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
       <button class="tab" id="tab-file" onclick="openPanel('file')">Fichier</button>
       <button class="tab" id="tab-course" onclick="openPanel('course')">Parcours</button>
       <button class="tab" id="tab-map" onclick="openPanel('map')">Carte</button>
+      <button class="tab" id="tab-trace" onclick="openPanel('trace')">Traçage</button>
       <button class="tab" id="tab-share" onclick="openPanel('share')">Partager</button>
       <button class="tab" id="tab-export" onclick="openPanel('export')">Export</button>
     </div>
@@ -202,15 +203,17 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
   <button class="bigbtn p" onclick="loadFromUrl()">Charger depuis le lien</button>
   <div class="hint" id="proxy-hint"></div>
   <div class="sep"></div>
-  <label class="lbl">Ou fichiers téléchargés (onglet Network) — tu peux aussi les glisser sur la carte</label>
+  <label class="lbl">Ou fichiers — JSON Livelox <b>ou world file</b> (.jgw/.pgw/.gfw…) + image. Glisse-les aussi sur la carte.</label>
   <div class="row2">
-    <button class="bigbtn" onclick="document.getElementById('fi-json').click()">JSON…</button>
+    <button class="bigbtn" onclick="document.getElementById('fi-json').click()">JSON / world file…</button>
     <button class="bigbtn" id="btn-img" onclick="document.getElementById('fi-img').click()">Image…</button>
   </div>
-  <div class="kv"><span>JSON</span><span id="i-json">—</span></div>
+  <div class="kv"><span>Données</span><span id="i-json">—</span></div>
   <div class="kv"><span>Image</span><span id="i-img">—</span></div>
-  <input type="file" id="fi-json" accept=".json,application/json">
+  <input type="file" id="fi-json" accept=".json,.jgw,.pgw,.gfw,.tfw,.wld,.jpgw,.pngw,application/json">
   <input type="file" id="fi-img" accept="image/*">
+  <div class="kv" id="epsg-row" style="display:none"><span>Système (EPSG) pour GPX</span>
+    <select id="epsg" onchange="onEpsgChange()" style="padding:6px;max-width:200px"></select></div>
   <div class="sep"></div>
   <h3>Échelle</h3>
   <div class="kv"><span>Mètres par pixel</span><input type="number" id="mpp" value="1" step="0.0001" min="0.0001" oninput="onScaleEdit()" style="width:120px;padding:6px;text-align:right"></div>
@@ -232,6 +235,25 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
   </div>
   <div class="kv"><span>Postes placés</span><span id="i-coursecount">0</span></div>
   <button class="bigbtn p" onclick="validateCourse()">Valider le parcours</button>
+  <div class="sep"></div>
+  <h3>Importer un parcours (XML IOF 3.0)</h3>
+  <div class="hint">Charge d'abord l'image de la carte (Fichier). Le XML positionne les postes via leur position carte (mm) et fournit le géoréférencement (lat/lng) pour le GPX.</div>
+  <button class="bigbtn" onclick="document.getElementById('fi-xml').click()">Importer un fichier XML…</button>
+  <input type="file" id="fi-xml" accept=".xml,application/xml,text/xml">
+  <label class="lbl" id="xml-course-lbl" style="display:none">Choisir le parcours :</label>
+  <select id="xml-course" onchange="useXmlCourse()" style="display:none;padding:9px;border-radius:9px"></select>
+</div>
+
+<!-- Panneau Traçage temps réel -->
+<div class="panel" id="panel-trace">
+  <h3>Traçage en temps réel</h3>
+  <div class="hint"><b>Analyse d'abord la carte</b> (onglet Carte). Place ensuite les postes : dès le 2ᵉ poste, les choix se calculent <b>automatiquement</b> à chaque ajout, et se recalculent quand tu <b>déplaces</b> un poste (au relâché). Clic = ajouter ; glisser un poste = déplacer.</div>
+  <button class="bigbtn p" id="btn-trace" onclick="toggleTrace()">Démarrer le traçage</button>
+  <div class="row2">
+    <button class="bigbtn" onclick="deleteSelectedPt()">Supprimer le poste</button>
+    <button class="bigbtn" onclick="clearCourse()">Tout effacer</button>
+  </div>
+  <div class="kv"><span>Postes placés</span><span id="i-tracecount">0</span></div>
 </div>
 
 <!-- Panneau Carte -->
@@ -239,6 +261,7 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
   <h3>Carte</h3>
   <button class="bigbtn p" id="btn-grid" onclick="doAnalysis()" disabled>Analyser la carte</button>
   <button class="bigbtn" id="btn-overlay" onclick="cycleOverlay()">Calque : off</button>
+  <button class="bigbtn" id="btn-gradient" onclick="toggleGradient()">Couleurs des choix : distinctes</button>
   <div class="cl">
     <div class="cli"><div class="clsq" style="background:#ff3b3b"></div>Infranchissable</div>
     <div class="cli"><div class="clsq" style="background:#39e65a"></div>Franchissable</div>
@@ -269,6 +292,10 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
   <div class="hint">Génère une page par tronçon (capture de la carte avec les choix). Analyse d'abord les tronçons voulus (« Tout » dans le bandeau du bas). Dans la fenêtre d'impression, choisis « Enregistrer au format PDF ».</div>
   <button class="bigbtn" id="btn-hidecourse" onclick="toggleCourseVisible()">Parcours sur la carte : visible</button>
   <button class="bigbtn p" onclick="exportPdf()">Exporter en PDF</button>
+  <div class="sep"></div>
+  <h3>Export GPX (géoréférencé)</h3>
+  <div class="hint">Exporte les lignes de chaque choix de tout le parcours en GPX (1 trace par choix). Nécessite une carte géoréférencée (Livelox, XML IOF, ou world file + EPSG).</div>
+  <button class="bigbtn p" id="btn-gpx" onclick="exportGpx()" disabled>Exporter les choix en GPX</button>
 </div>
 
 <!-- réglages internes (valeurs par défaut, non affichés) -->
@@ -282,8 +309,18 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
 </div>
 
 
+<script src="proj4.js"></script>
 <script>
 "use strict";
+// Systèmes de coordonnées proposés (France en tête) pour le géoréférencement GPX
+const EPSG_LIST=[
+  {code:'EPSG:2154',name:'Lambert-93 / RGF93 (France)',def:'+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs'},
+  {code:'EPSG:32631',name:'UTM zone 31N / WGS84 (France ouest)',def:'+proj=utm +zone=31 +datum=WGS84 +units=m +no_defs'},
+  {code:'EPSG:32632',name:'UTM zone 32N / WGS84 (France est)',def:'+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs'},
+  {code:'EPSG:3006',name:'SWEREF99 TM (Suède / Livelox)',def:'+proj=utm +zone=33 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs'},
+  {code:'EPSG:4326',name:'WGS84 lat/lng (déjà géographique)',def:'+proj=longlat +datum=WGS84 +no_defs'},
+];
+if(window.proj4)EPSG_LIST.forEach(e=>proj4.defs(e.code,e.def));
 // ════════════════════════════════════════════════════════════════════════════
 //  Routechoice — portage en JS pur de la méthode SprintOAnalyzer
 //  Pipeline :
@@ -326,7 +363,10 @@ const OVERPRINT = new Set(['BROWN','NORTHLINES']);
 let srcImg=null, srcCvs=null, srcCtx=null;   // image carte
 let mpp=1;                                     // mètres par pixel
 let mapScale=4000;                             // dénominateur d'échelle (1:N) — pour convertir mm papier → px
-let controls=[];                               // [{x,y,code,type}]  en pixels image
+let controls=[];                               // [{x,y,code,type,lat?,lng?}]  en pixels image
+let worldFile=null, geoEpsg=null;              // image géoréférencée : affine pixel→projeté + EPSG
+let geoAffine=null;                            // affine pixel→lat/lng (ajustée depuis les postes lat/lng)
+let gradientColors=false;                      // couleurs des choix : dégradé vert→rouge
 let legIdx=0;                                  // tronçon courant
 let ascale=1;                                  // facteur d'analyse (grille = image × ascale)
 let grid=null;                                 // {W,H,blocked:Uint8, blockedClear:Uint8} en coords grille
@@ -341,6 +381,7 @@ let manualMode=false, manualPts=[];            // ajout d'un choix manuel par po
 let brushStrokes=[], _lastBrush=null;          // historique pinceau (pour le partage)
 let eventClassId=null, pendingBrush=null;      // partage : id de classe Livelox / pinceau à rejouer
 let courseMode=false, coursePts=[], selPt=-1;  // tracé manuel du parcours
+let traceMode=false;                           // traçage temps réel (choix recalculés en direct)
 let _courseDrag=false,_courseDownPos=null,_courseMoved=0,_touch=null,_md=null;
 const COLORS=['#5b8cff','#ff6b6b','#4ade80','#fbbf24','#a78bfa','#fb923c','#22d3ee','#f472b6'];
 
@@ -402,9 +443,9 @@ MA.addEventListener('mousedown',e=>{
   if(!srcImg)return;
   if(e.button===1||(e.button===0&&e.altKey)){panning=true;panS={x:e.clientX-panX,y:e.clientY-panY};MA.style.cursor='grab';e.preventDefault();return;}
   if(e.button!==0)return;
-  const p=s2i(e.clientX,e.clientY);
-  if(courseMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_courseDrag=true;_md={moved:0,p};render();e.preventDefault();return;}}
-  if(brushMode!=='off'&&grid&&!courseMode){brushing=true;paintAt(p);e.preventDefault();return;}
+  const p=s2i(e.clientX,e.clientY),placing=courseMode||traceMode;
+  if(placing){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_courseDrag=true;_md={moved:0,p};render();e.preventDefault();return;}}
+  if(brushMode!=='off'&&grid&&!placing){brushing=true;paintAt(p);e.preventDefault();return;}
   _md={x:e.clientX,y:e.clientY,px:panX,py:panY,moved:0,p,pan:true};
   e.preventDefault();
 });
@@ -421,8 +462,8 @@ document.addEventListener('mouseup',()=>{
   if(panning){panning=false;MA.style.cursor='crosshair';}
   if(brushing){brushing=false;if(brushDirty)rebuildAfterBrush();}
   if(_md){
-    if(_courseDrag)_courseDrag=false;
-    else if(_md.moved<5){if(courseMode)addPt(_md.p);else handleTap(_md.p);}
+    if(_courseDrag){_courseDrag=false;if(traceMode)onTracePointMoved(selPt);}
+    else if(_md.moved<5){if(courseMode||traceMode)addPt(_md.p);else handleTap(_md.p);}
     _md=null;
   }
 });
@@ -441,8 +482,8 @@ MA.addEventListener('touchstart',e=>{
   if(!srcImg)return;
   if(e.touches.length===1){
     const t=e.touches[0],p=s2i(t.clientX,t.clientY);
-    if(courseMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_touch={mode:'cpt'};render();e.preventDefault();return;}}
-    if(brushMode!=='off'&&grid&&!courseMode){brushing=true;paintAt(p);_touch={mode:'brush'};e.preventDefault();return;}
+    if(courseMode||traceMode){const hit=nearestCoursePt(p);if(hit>=0){selPt=hit;_touch={mode:'cpt'};render();e.preventDefault();return;}}
+    if(brushMode!=='off'&&grid&&!courseMode&&!traceMode){brushing=true;paintAt(p);_touch={mode:'brush'};e.preventDefault();return;}
     _touch={mode:'pan',x:t.clientX,y:t.clientY,px:panX,py:panY,moved:0,downP:p};
   }else if(e.touches.length===2){
     const a=e.touches[0],b=e.touches[1];
@@ -468,7 +509,8 @@ MA.addEventListener('touchmove',e=>{
 },{passive:false});
 MA.addEventListener('touchend',e=>{
   if(_touch){
-    if(_touch.mode==='pan'&&_touch.moved<10){if(courseMode)addPt(_touch.downP);else handleTap(_touch.downP);}
+    if(_touch.mode==='pan'&&_touch.moved<10){if(courseMode||traceMode)addPt(_touch.downP);else handleTap(_touch.downP);}
+    if(_touch.mode==='cpt'&&traceMode)onTracePointMoved(selPt);
     if(_touch.mode==='brush'){brushing=false;if(brushDirty)rebuildAfterBrush();}
   }
   _touch=e.touches.length?null:null;  // on réinitialise dès qu'un doigt se lève
@@ -479,7 +521,7 @@ function setMode(m){mode=m;$('m-cal').classList.toggle('p',m==='cal');if(m==='ca
 
 // ─── Panneaux haut (Fichier / Carte) ───
 let openPanelName=null;
-const PANELS=['file','course','map','share','export'];
+const PANELS=['file','course','map','trace','share','export'];
 function openPanel(name){
   if(openPanelName===name){closePanels();return;}
   openPanelName=name;
@@ -550,10 +592,44 @@ function nearestCoursePt(p){
   for(let i=0;i<coursePts.length;i++){const dx=coursePts[i].x-p.x,dy=coursePts[i].y-p.y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i;}}
   return best;
 }
-function addPt(p){coursePts.push({x:p.x,y:p.y});selPt=coursePts.length-1;$('i-coursecount').textContent=coursePts.length;render();}
+function updateTraceCount(){const e=$('i-tracecount');if(e)e.textContent=coursePts.length;}
+function addPt(p){
+  coursePts.push({x:p.x,y:p.y});selPt=coursePts.length-1;$('i-coursecount').textContent=coursePts.length;updateTraceCount();
+  if(traceMode){syncTraceControls();const n=controls.length;if(n>=2){legIdx=n-2;computeLeg(n-2);}updateLegUI();}
+  render();
+}
 function moveSelPt(p){if(selPt>=0&&selPt<coursePts.length){coursePts[selPt]={x:p.x,y:p.y};render();}}
-function deleteSelectedPt(){if(selPt<0||selPt>=coursePts.length){log('Aucun poste sélectionné','er');return;}coursePts.splice(selPt,1);selPt=-1;$('i-coursecount').textContent=coursePts.length;render();}
-function clearCourse(){coursePts=[];selPt=-1;$('i-coursecount').textContent='0';render();}
+function deleteSelectedPt(){
+  if(selPt<0||selPt>=coursePts.length){log('Aucun poste sélectionné','er');return;}
+  const d=selPt;coursePts.splice(d,1);selPt=-1;$('i-coursecount').textContent=coursePts.length;updateTraceCount();
+  if(traceMode){syncTraceControls();recomputeAllTraceLegs();legIdx=Math.min(legIdx,Math.max(0,controls.length-2));updateLegUI();}
+  render();
+}
+function clearCourse(){coursePts=[];selPt=-1;$('i-coursecount').textContent='0';updateTraceCount();if(traceMode){controls=[];legResults={};updateLegUI();}render();}
+
+// ─── Traçage temps réel : place les postes, choix recalculés en direct ───
+function toggleTrace(){
+  if(!grid){log('Analyse la carte d\'abord (onglet Carte).','er');return;}
+  traceMode=!traceMode;
+  $('btn-trace').classList.toggle('p',traceMode);
+  $('btn-trace').textContent=traceMode?'Traçage en cours — clique les postes':'Démarrer le traçage';
+  if(traceMode){courseMode=false;$('btn-course').classList.remove('p');brushMode='off';setBrush('off');manualMode=false;mode='nav';
+    coursePts=[];controls=[];legResults={};selPt=-1;updateTraceCount();updateLegUI();closePanels();}
+  render();
+}
+function syncTraceControls(){
+  const n=coursePts.length;
+  controls=coursePts.map((p,i)=>({x:Math.round(p.x),y:Math.round(p.y),code:courseLabel(i,n),type:i===0?0:(i===n-1?2:1)}));
+}
+function computeLeg(i){
+  if(i<0||i>=controls.length-1)return;
+  const a=controls[i],b=controls[i+1];
+  if(Math.hypot(b.x-a.x,b.y-a.y)<3){legResults[i]=[];return;}
+  const ratio=1+(+$('p-ratio').value)/100,minSepPx=(+$('p-sep').value)/mpp,maxK=+$('p-maxk').value;
+  legResults[i]=findRouteChoices({x:a.x,y:a.y},{x:b.x,y:b.y},ratio,minSepPx,maxK);
+}
+function recomputeAllTraceLegs(){legResults={};for(let i=0;i<controls.length-1;i++)computeLeg(i);}
+function onTracePointMoved(i){syncTraceControls();computeLeg(i-1);computeLeg(i);updateLegUI();render();}
 function validateCourse(){
   if(coursePts.length<2){log('Place au moins un départ et une arrivée','er');return;}
   const n=coursePts.length;
@@ -590,24 +666,100 @@ function rebuildAfterBrush(){
 //  Drag & drop + file pickers
 // ════════════════════════════════════════════════════════════════════════════
 MA.addEventListener('dragover',e=>e.preventDefault());
+const WORLDFILE_RE=/\.(jgw|pgw|gfw|tfw|wld|jpgw|pngw|tifw)$/i;
 MA.addEventListener('drop',e=>{
   e.preventDefault();
   for(const f of e.dataTransfer.files){
     if(f.type.startsWith('image/')) loadImageFile(f);
-    else if(f.name.endsWith('.json')||f.type==='application/json') loadJsonFile(f);
+    else if(WORLDFILE_RE.test(f.name)) loadDataFile(f);
+    else if(f.name.endsWith('.json')||f.type==='application/json') loadDataFile(f);
   }
 });
-$('fi-json').addEventListener('change',e=>{if(e.target.files[0])loadJsonFile(e.target.files[0]);});
+$('fi-json').addEventListener('change',e=>{if(e.target.files[0])loadDataFile(e.target.files[0]);});
 $('fi-img').addEventListener('change',e=>{if(e.target.files[0])loadImageFile(e.target.files[0]);});
 
-function loadJsonFile(f){
+// route un fichier "données" : JSON Livelox OU world file (.jgw/.pgw/.gfw…)
+function loadDataFile(f){
   const rd=new FileReader();
+  if(WORLDFILE_RE.test(f.name)){
+    rd.onload=()=>{if(parseWorldFile(rd.result))$('i-json').textContent=f.name+' (géoréf)';};
+    rd.readAsText(f);return;
+  }
   rd.onload=()=>{try{parseLivelox(JSON.parse(rd.result));$('i-json').textContent=f.name;}catch(err){log('JSON illisible : '+err.message,'er');}};
   rd.readAsText(f);
+}
+// world file : 6 nombres (A, D, B, E, C, F) → affine pixel→coord projetée + échelle
+function parseWorldFile(text){
+  const v=text.trim().split(/\s+/).map(Number).filter(x=>!isNaN(x));
+  if(v.length<6){log('World file invalide (6 nombres attendus)','er');return false;}
+  worldFile={A:v[0],D:v[1],B:v[2],E:v[3],C:v[4],F:v[5]};
+  mpp=Math.sqrt(v[0]*v[0]+v[1]*v[1]);   // taille d'un pixel = m/px (CRS métrique)
+  $('mpp').value=mpp.toFixed(4);$('i-scalesrc').textContent='world file';
+  log(`World file : échelle ${mpp.toFixed(3)} m/px. Choisis l'EPSG pour le GPX.`,'ok');
+  $('epsg-row').style.display='';updateGpxBtn();updateLegUI();
+  return true;
 }
 function loadImageFile(f){
   loadImage(URL.createObjectURL(f),f.name);
   $('i-img').textContent=f.name;
+}
+
+// ─── Import parcours XML IOF 3.0 ───
+let xmlData=null;
+$('fi-xml').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>parseXmlCourse(rd.result);rd.readAsText(f);});
+function parseXmlCourse(text){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length){log('XML illisible','er');return;}
+  const mapEl=doc.getElementsByTagName('Map')[0];
+  const tl=mapEl&&mapEl.getElementsByTagName('MapPositionTopLeft')[0];
+  const br=mapEl&&mapEl.getElementsByTagName('MapPositionBottomRight')[0];
+  if(!tl||!br){log('XML : extent carte (MapPosition) manquant','er');return;}
+  const ext={tlx:+tl.getAttribute('x'),tly:+tl.getAttribute('y'),brx:+br.getAttribute('x'),bry:+br.getAttribute('y')};
+  const scale=+((mapEl.getElementsByTagName('Scale')[0]||{}).textContent)||4000;
+  // postes (définitions) indexés par Id
+  const ctrlMap={};
+  for(const ce of doc.getElementsByTagName('Control')){
+    const idEl=ce.getElementsByTagName('Id')[0], mp=ce.getElementsByTagName('MapPosition')[0];
+    if(!idEl||!mp)continue;                       // ignore les <Control>id</Control> des CourseControl
+    const pos=ce.getElementsByTagName('Position')[0];
+    ctrlMap[idEl.textContent.trim()]={type:ce.getAttribute('type'),mmx:+mp.getAttribute('x'),mmy:+mp.getAttribute('y'),
+      lat:pos?+pos.getAttribute('lat'):null,lng:pos?+pos.getAttribute('lng'):null};
+  }
+  const courses=[];
+  for(const co of doc.getElementsByTagName('Course')){
+    const name=((co.getElementsByTagName('Name')[0]||{}).textContent||'parcours').trim();
+    const seq=[];
+    for(const cc of co.getElementsByTagName('CourseControl')){
+      const ctrlEl=cc.getElementsByTagName('Control')[0];
+      if(ctrlEl)seq.push({id:ctrlEl.textContent.trim(),type:cc.getAttribute('type')});
+    }
+    if(seq.length)courses.push({name,seq});
+  }
+  if(!courses.length){log('XML : aucun parcours trouvé','er');return;}
+  xmlData={ext,scale,ctrlMap,courses};
+  const sel=$('xml-course');sel.innerHTML='';
+  courses.forEach((c,i)=>{const o=document.createElement('option');o.value=i;o.textContent=`${c.name} (${c.seq.length} postes)`;sel.appendChild(o);});
+  $('xml-course-lbl').style.display='';sel.style.display='';
+  log(`XML chargé : ${courses.length} parcours. Choisis-en un.`,'ok');
+  if(srcImg)useXmlCourse();
+}
+function useXmlCourse(){
+  if(!xmlData)return;
+  if(!srcImg){log('Charge d\'abord l\'image de la carte (Fichier).','er');return;}
+  const co=xmlData.courses[+$('xml-course').value];if(!co)return;
+  const e=xmlData.ext,W=srcImg.width,H=srcImg.height;
+  const toPix=(mmx,mmy)=>({x:Math.round((mmx-e.tlx)/(e.brx-e.tlx)*W),y:Math.round((e.tly-mmy)/(e.tly-e.bry)*H)});
+  controls=[];
+  co.seq.forEach(sc=>{
+    const cd=xmlData.ctrlMap[sc.id];if(!cd)return;
+    const p=toPix(cd.mmx,cd.mmy);
+    const t=(sc.type==='Start'||cd.type==='Start')?0:((sc.type==='Finish'||cd.type==='Finish')?2:1);
+    controls.push({x:p.x,y:p.y,code:sc.id,type:t,lat:cd.lat,lng:cd.lng});
+  });
+  mapScale=xmlData.scale||mapScale;
+  fitGeoFromControls();updateGpxBtn();
+  legIdx=0;legResults={};updateLegUI();focusLeg();closePanels();
+  log(`Parcours « ${co.name} » : ${controls.length} postes placés.`,'ok');stat(controls.length+' postes');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -666,9 +818,12 @@ function parseLivelox(d){
       if(window._lvxM&&pp){const m=window._lvxM;px=m.m00*pp.x+m.m01*pp.y+m.m02;py=m.m10*pp.x+m.m11*pp.y+m.m12;}
       else if(c.mapPosition){px=c.mapPosition.x;py=c.mapPosition.y;} // fallback peu fiable
       else continue;
-      controls.push({x:Math.round(px),y:Math.round(py),code:c.code||String(c.numericCode||''),type:c.type});
+      const pos=c.position||{};
+      controls.push({x:Math.round(px),y:Math.round(py),code:c.code||String(c.numericCode||''),type:c.type,
+        lat:pos.latitude,lng:pos.longitude});
     }
   }
+  fitGeoFromControls();updateGpxBtn();   // postes lat/lng → géoréf pixel↔lat/lng (pour GPX)
   legIdx=0;
   log(`Livelox : ${controls.length} postes, parcours « ${course&&course.name||'?'} » (${(course&&course.length||0)}m), ${mpp.toFixed(3)} m/px`,'ok');
   if(imgUrl){window._lvxImgUrl=imgUrl;fetchImageSmart(imgUrl);}
@@ -800,11 +955,74 @@ function exportPdf(){
   log('PDF : '+pages.length+' pages prêtes (fenêtre d\'impression).','ok');
 }
 
+// GPX : une trace par choix (ligne) de chaque tronçon, en lat/lng WGS84.
+function exportGpx(){
+  if(!hasGeo()){log('Carte non géoréférencée (Livelox / XML IOF / world file + EPSG).','er');return;}
+  let trk='',count=0;
+  for(let i=0;i<controls.length-1;i++){
+    const res=legResults[i];if(!res)continue;
+    const legName=escGpx(controls[i].code+' → '+controls[i+1].code);
+    res.forEach((r,j)=>{
+      const pts=r.path.map(p=>pixelToLatLng(p.x,p.y)).filter(Boolean);
+      if(pts.length<2)return;count++;
+      trk+=`\n <trk><name>${legName} — choix ${j+1} (${px2m(r.distPx).toFixed(0)}m)</name><trkseg>`;
+      pts.forEach(ll=>{trk+=`<trkpt lat="${ll.lat.toFixed(7)}" lon="${ll.lng.toFixed(7)}"/>`;});
+      trk+='</trkseg></trk>';
+    });
+  }
+  if(!count){log('Aucun choix analysé à exporter (analyse les tronçons d\'abord).','er');return;}
+  const gpx='<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Routechoice" xmlns="http://www.topografix.com/GPX/1/1">'+trk+'\n</gpx>';
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([gpx],{type:'application/gpx+xml'}));
+  a.download='routechoice.gpx';a.click();
+  log(`GPX exporté : ${count} tracés de choix.`,'ok');closePanels();
+}
+function escGpx(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Échelle
 // ════════════════════════════════════════════════════════════════════════════
 function onScaleEdit(){mpp=+$('mpp').value||1;$('i-scalesrc').textContent='manuel';updateLegUI();}
 function px2m(px){return px*mpp;}
+
+// ─── Géoréférencement (pixel → lat/lng) ───
+// Ajuste une affine pixel→lat/lng par moindres carrés depuis les postes qui ont
+// un lat/lng (Livelox ou XML IOF). Localement exact sur une carte sprint.
+function fitGeoFromControls(){
+  const pts=controls.filter(c=>c.lat!=null&&c.lng!=null);
+  if(pts.length<3){geoAffine=null;return false;}
+  // résout  v = a*x + b*y + c  (séparément pour lng et lat) via équations normales
+  function solve(getV){
+    let Sxx=0,Sxy=0,Sx=0,Syy=0,Sy=0,Sn=pts.length,Sxv=0,Syv=0,Sv=0;
+    for(const p of pts){const x=p.x,y=p.y,v=getV(p);Sxx+=x*x;Sxy+=x*y;Sx+=x;Syy+=y*y;Sy+=y;Sxv+=x*v;Syv+=y*v;Sv+=v;}
+    // matrice [[Sxx,Sxy,Sx],[Sxy,Syy,Sy],[Sx,Sy,Sn]] · [a,b,c] = [Sxv,Syv,Sv]
+    const M=[[Sxx,Sxy,Sx],[Sxy,Syy,Sy],[Sx,Sy,Sn]],R=[Sxv,Syv,Sv];
+    return solve3(M,R);
+  }
+  const lngc=solve(p=>p.lng), latc=solve(p=>p.lat);
+  if(!lngc||!latc){geoAffine=null;return false;}
+  geoAffine={lng:lngc,lat:latc};
+  return true;
+}
+function solve3(M,R){ // résolution 3×3 par élimination de Gauss
+  const A=M.map((row,i)=>row.concat(R[i]));
+  for(let i=0;i<3;i++){
+    let p=i;for(let r=i+1;r<3;r++)if(Math.abs(A[r][i])>Math.abs(A[p][i]))p=r;
+    if(Math.abs(A[p][i])<1e-12)return null;[A[i],A[p]]=[A[p],A[i]];
+    for(let r=0;r<3;r++){if(r===i)continue;const f=A[r][i]/A[i][i];for(let c=i;c<4;c++)A[r][c]-=f*A[i][c];}
+  }
+  return [A[0][3]/A[0][0],A[1][3]/A[1][1],A[2][3]/A[2][2]];
+}
+function hasGeo(){return !!geoAffine || !!(worldFile&&geoEpsg&&window.proj4);}
+function pixelToLatLng(px,py){
+  if(worldFile&&geoEpsg&&window.proj4){
+    const wf=worldFile, X=wf.A*px+wf.B*py+wf.C, Y=wf.D*px+wf.E*py+wf.F;
+    try{const ll=proj4(geoEpsg,'EPSG:4326',[X,Y]);return {lng:ll[0],lat:ll[1]};}catch(e){}
+  }
+  if(geoAffine){const a=geoAffine;return {lng:a.lng[0]*px+a.lng[1]*py+a.lng[2],lat:a.lat[0]*px+a.lat[1]*py+a.lat[2]};}
+  return null;
+}
+function onEpsgChange(){geoEpsg=$('epsg').value||null;updateGpxBtn();}
+function updateGpxBtn(){const b=$('btn-gpx');if(b)b.disabled=!hasGeo();}
 function applyCalibration(){
   if(!calA||!calB){log('Place les points A et B','er');return;}
   const dpx=Math.hypot(calB.x-calA.x,calB.y-calA.y);
@@ -1423,7 +1641,24 @@ function validateAddChoice(){
 }
 // réattribue des couleurs distinctes aux choix restants (par position) → jamais
 // deux choix de la même couleur après suppression/ajout.
-function recolor(res){res.forEach((r,i)=>{r.color=COLORS[i%COLORS.length];});}
+function recolor(res){
+  if(gradientColors&&res.length>1){
+    const min=Math.min(...res.map(r=>r.distPx)),max=Math.max(...res.map(r=>r.distPx)),span=max-min||1;
+    res.forEach(r=>{r.color=gradColor((r.distPx-min)/span);});   // 0=plus court=vert, 1=plus long=rouge
+  }else res.forEach((r,i)=>{r.color=gradientColors?gradColor(0):COLORS[i%COLORS.length];});
+}
+function gradColor(t){
+  t=Math.max(0,Math.min(1,t));let r,g,b;
+  if(t<0.5){const u=t/0.5;r=34+(240-34)*u;g=180+(190-180)*u;b=80+(40-80)*u;}          // vert→jaune
+  else{const u=(t-0.5)/0.5;r=240+(225-240)*u;g=190+(55-190)*u;b=40+(55-40)*u;}        // jaune→rouge
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+function toggleGradient(){
+  gradientColors=!gradientColors;
+  $('btn-gradient').textContent='Couleurs des choix : '+(gradientColors?'dégradé vert→rouge':'distinctes');
+  for(const k in legResults)recolor(legResults[k]);
+  render();renderChoices();
+}
 function deleteChoice(i){
   const res=legResults[legIdx];if(!res)return;
   res.splice(i,1);
@@ -1513,18 +1748,23 @@ function render(){
     for(const nd of graph.nodes){const s=i2s(nd.x*iv,nd.y*iv);ctx.fillRect(s.x-1,s.y-1,2,2);}
   }
   // tracé de tous les postes + lignes du parcours
-  if(showCourse&&controls.length){
+  if(showCourse&&controls.length&&!traceMode){
     ctx.strokeStyle='rgba(230,52,153,.5)';ctx.lineWidth=Math.max(2,3*zoom);ctx.beginPath();
     controls.forEach((c,i)=>{const s=i2s(c.x,c.y);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
     ctx.stroke();
     controls.forEach((c,i)=>drawControl(c,i));
   }
-  // choix du tronçon courant
-  const res=legResults[legIdx];
-  if(res){res.forEach(r=>drawPath(r.path,r.color,false));drawChoiceLabels(res);}
+  // choix : en traçage on affiche TOUS les tronçons ; sinon le tronçon courant
+  if(traceMode){
+    for(const k in legResults){const rr=legResults[k];if(rr)rr.forEach(r=>drawPath(r.path,r.color,false));}
+    const cur=legResults[legIdx];if(cur&&cur.length)drawChoiceLabels(cur);
+  }else{
+    const res=legResults[legIdx];
+    if(res){res.forEach(r=>drawPath(r.path,r.color,false));drawChoiceLabels(res);}
+  }
   // surbrillance tronçon courant
   const lg=currentLeg();
-  if(showCourse&&lg){drawControl(lg.a,legIdx,true);drawControl(lg.b,legIdx+1,true);}
+  if(showCourse&&lg&&!traceMode){drawControl(lg.a,legIdx,true);drawControl(lg.b,legIdx+1,true);}
   // points de passage du choix manuel en cours
   if(manualMode&&lg){
     const seq=[lg.p1,...manualPts,lg.p2];
@@ -1535,8 +1775,8 @@ function render(){
   // calibration
   if(calA)drawDot(calA,'#00ccff','A');
   if(calB){drawDot(calB,'#00ccff','B');if(calA){const s1=i2s(calA.x,calA.y),s2=i2s(calB.x,calB.y);ctx.strokeStyle='rgba(0,204,255,.7)';ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(s1.x,s1.y);ctx.lineTo(s2.x,s2.y);ctx.stroke();ctx.setLineDash([]);}}
-  // tracé manuel du parcours en cours
-  if(courseMode)drawCoursePts();
+  // symboles des postes en cours de placement (parcours manuel OU traçage)
+  if(courseMode||traceMode)drawCoursePts();
 }
 function drawControl(c,i,hl){
   // rayon proportionnel au zoom (suit la carte ; plancher minime pour rester visible)
@@ -1600,6 +1840,8 @@ function drawChoiceLabels(res){
 
 stat('en attente');
 renderChoices();
+// peuple le sélecteur EPSG (France en tête)
+{const sel=$('epsg');EPSG_LIST.forEach(e=>{const o=document.createElement('option');o.value=e.code;o.textContent=e.code+' — '+e.name;sel.appendChild(o);});geoEpsg=sel.value;updateGpxBtn();}
 // détecte le serveur local pour adapter l'indice du panneau Fichier
 fetch('/api/image').then(r=>{
   $('proxy-hint').innerHTML = r.status===404
