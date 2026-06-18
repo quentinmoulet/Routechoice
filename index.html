@@ -946,6 +946,7 @@ function exportPdf(){
   const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const saveLeg=legIdx,pages=[];
   for(let i=0;i<controls.length-1;i++){
+    if(!isRealLeg(i))continue;                        // tronçon nul (<5 m) → hors export
     legIdx=i;setLegRotation();fitLeg();              // oriente + cadre + rend
     const lg=currentLeg(),res=legResults[i]||[];if(res.length)recolor(res);
     // titre : nom du tronçon + distance de chaque choix dans SA couleur
@@ -1793,7 +1794,7 @@ function renderChoices(){
     chip.innerHTML=`<span class="dist" style="color:${r.color}">${px2m(r.distPx).toFixed(0)}m</span>
       <span class="rel">${rel}</span>
       <span class="del" title="Supprimer">✕</span>`;
-    chip.addEventListener('mouseenter',()=>{render();drawPath(r.path,r.color,true,choiceOffset(i,res.length));});
+    chip.addEventListener('mouseenter',()=>{render();ensureChoiceLat(res);drawChoicePath(r,r.color,true,Math.max(2,3*zoom));});
     chip.addEventListener('mouseleave',()=>render());
     chip.querySelector('.del').addEventListener('click',e=>{e.stopPropagation();deleteChoice(i);});
     el.appendChild(chip);
@@ -1836,7 +1837,7 @@ function render(){
   // tracé manuel d'un parcours (mode Parcours), où on positionne seulement les postes.
   if(!courseMode){
     const res=legResults[legIdx];
-    if(res){res.forEach((r,i)=>drawPath(r.path,r.color,false,choiceOffset(i,res.length)));drawChoiceLabels(res);}
+    if(res&&res.length){ensureChoiceLat(res);const sp=Math.max(2,3*zoom);res.forEach(r=>drawChoicePath(r,r.color,false,sp));drawChoiceLabels(res);}
   }
   // surbrillance tronçon courant
   const lg=currentLeg();
@@ -1874,30 +1875,74 @@ function drawControl(c,i,hl){
   }
 }
 function drawDot(p,col,lbl){const s=i2s(p.x,p.y),r=Math.max(5,7*zoom);ctx.beginPath();ctx.arc(s.x,s.y,r,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.font='bold 11px monospace';ctx.fillText(lbl,s.x,s.y-r-2);}
-// décale une polyligne écran de `off` px perpendiculairement (normale = tangente
-// moyenne tournée de 90°) → des choix superposés deviennent des rubans parallèles.
-function offsetScreenPts(S,off){
-  if(!off)return S;const n=S.length,out=[];
-  for(let i=0;i<n;i++){
-    let dx=0,dy=0;
-    if(i>0){dx+=S[i].x-S[i-1].x;dy+=S[i].y-S[i-1].y;}
-    if(i<n-1){dx+=S[i+1].x-S[i].x;dy+=S[i+1].y-S[i].y;}
-    const len=Math.hypot(dx,dy)||1;
-    out.push({x:S[i].x-dy/len*off,y:S[i].y+dx/len*off});
-  }
-  return out;
-}
-function drawPath(path,color,thick,off){
+function drawPath(path,color,thick){
   if(!path||path.length<2)return;
-  let S=path.map(p=>i2s(p.x,p.y));
-  if(off)S=offsetScreenPts(S,off);
   ctx.beginPath();
-  S.forEach((s,j)=>j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y));
+  path.forEach((p,j)=>{const s=i2s(p.x,p.y);j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
   ctx.strokeStyle=color;ctx.lineWidth=thick?Math.max(3,4.5*zoom):Math.max(2,3*zoom);
   ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
 }
-// décalage perpendiculaire du choix i parmi n (centré sur 0, pas = largeur de trait)
-function choiceOffset(i,n){return (i-(n-1)/2)*Math.max(2,3*zoom);}
+// ─── Décalage parallèle des choix (par sommet, local) ───────────────────────────
+// Sur chaque portion, on regroupe les choix réellement coïncidents (tracés A*
+// superposés) et on les répartit côte à côte CENTRÉS sur ce groupe local : si le
+// choix du milieu s'écarte, les deux restants se recollent (pas de trou). Les ~15
+// derniers mètres à chaque extrémité fondent vers 0 → convergence sur le poste.
+// densifie un tracé à un pas régulier (les tracés A* string-pullés ont des sommets
+// clairsemés → indispensable pour détecter la coïncidence le long d'un couloir droit)
+function densify(path,step){
+  const out=[{x:path[0].x,y:path[0].y}];
+  for(let i=1;i<path.length;i++){
+    const a=path[i-1],b=path[i],d=Math.hypot(b.x-a.x,b.y-a.y),n=Math.max(1,Math.round(d/step));
+    for(let k=1;k<=n;k++){const t=k/n;out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});}
+  }
+  return out;
+}
+function ensureChoiceLat(res){
+  const sig=res.map(r=>r.path.length+':'+(r.path[0]?r.path[0].x+','+r.path[0].y:'')).join('|')+'#'+res.length;
+  if(res._latSig===sig)return;
+  const T=Math.max(5,2/mpp), Lramp=15/mpp, step=Math.max(2.5,T/2), cs=T; // coïncidence ~2 m, fondu 15 m
+  res.forEach(r=>{r._dpath=densify(r.path,step);});
+  const hash=new Map(),key=(cx,cy)=>cx+'_'+cy;
+  res.forEach((r,ci)=>r._dpath.forEach(p=>{
+    const k=key(Math.floor(p.x/cs),Math.floor(p.y/cs));let a=hash.get(k);if(!a){a=[];hash.set(k,a);}a.push({ci,x:p.x,y:p.y});
+  }));
+  res.forEach((r,ci)=>{
+    const P=r._dpath,seg=[0];
+    for(let j=1;j<P.length;j++)seg[j]=seg[j-1]+Math.hypot(P[j].x-P[j-1].x,P[j].y-P[j-1].y);
+    const total=seg[seg.length-1]||1;
+    let lat=new Array(P.length);
+    for(let j=0;j<P.length;j++){
+      const p=P[j],grp=new Set([ci]),cx=Math.floor(p.x/cs),cy=Math.floor(p.y/cs);
+      for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+        const a=hash.get(key(cx+dx,cy+dy));if(!a)continue;
+        for(const q of a)if(q.ci!==ci&&(q.x-p.x)*(q.x-p.x)+(q.y-p.y)*(q.y-p.y)<=T*T)grp.add(q.ci);
+      }
+      const sorted=[...grp].sort((a,b)=>a-b);
+      let f=sorted.indexOf(ci)-(sorted.length-1)/2;   // rang centré dans le groupe local
+      const dEnd=Math.min(seg[j],total-seg[j]);
+      if(dEnd<Lramp)f*=dEnd/Lramp;                    // fondu aux extrémités (≤15 m)
+      lat[j]=f;
+    }
+    // lissage binomial → transition douce quand un choix entre/sort du groupe
+    for(let it=0;it<3;it++){const b=lat.slice();for(let j=1;j<lat.length-1;j++)b[j]=(lat[j-1]+2*lat[j]+lat[j+1])/4;lat=b;}
+    r._lat=lat;
+  });
+  res._latSig=sig;
+}
+function drawChoicePath(r,color,thick,spacing){
+  const P=r._dpath||r.path;if(!P||P.length<2)return;
+  const S=P.map(p=>i2s(p.x,p.y)),lat=r._lat;
+  if(lat)for(let i=0;i<S.length;i++){
+    let dx=0,dy=0;
+    if(i>0){dx+=S[i].x-S[i-1].x;dy+=S[i].y-S[i-1].y;}
+    if(i<S.length-1){dx+=S[i+1].x-S[i].x;dy+=S[i+1].y-S[i].y;}
+    const len=Math.hypot(dx,dy)||1,off=lat[i]*spacing;
+    S[i]={x:S[i].x-dy/len*off,y:S[i].y+dx/len*off};
+  }
+  ctx.beginPath();S.forEach((s,j)=>j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y));
+  ctx.strokeStyle=color;ctx.lineWidth=thick?Math.max(3,4.5*zoom):Math.max(2,3*zoom);
+  ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
+}
 // point à la fraction f (0..1) de la longueur d'arc d'un tracé
 function pointAtFraction(path,f){
   if(!path||!path.length)return null;if(path.length===1)return path[0];
