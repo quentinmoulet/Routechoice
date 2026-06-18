@@ -412,7 +412,10 @@ function fitImage(){
   zoom=Math.min(mw/srcImg.width,mh/srcImg.height)*0.92;
   panX=(mw-srcImg.width*zoom)/2;panY=(mh-srcImg.height*zoom)/2;
 }
-// cadre le tronçon courant (postes + tracés) avec ~15% de marge, selon l'orientation
+// rayon (px image) du symbole d'un poste, cf. drawControl (35 px ; départ ×1.10, arrivée ×1.5)
+function ctrlRadiusImg(c){return 35*(c&&c.type===0?1.10:(c&&c.type===2?1.5:1));}
+// cadre le tronçon courant en garantissant : tracés mesurés ENTIERS + les 2 cercles
+// de poste ENTIERS, puis ~15% de marge (donc bien au-delà des +5% demandés).
 function fitLeg(){
   if(!srcImg)return;
   const lg=currentLeg();const pts=[];
@@ -422,6 +425,9 @@ function fitLeg(){
   const c=Math.cos(viewRot),s=Math.sin(viewRot);
   let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
   for(const p of pts){const rx=p.x*c-p.y*s,ry=p.x*s+p.y*c;if(rx<mnx)mnx=rx;if(rx>mxx)mxx=rx;if(ry<mny)mny=ry;if(ry>mxy)mxy=ry;}
+  // on dilate la bbox du rayon des cercles (sinon les postes débordent et sont rognés)
+  const R=lg?Math.max(ctrlRadiusImg(lg.a),ctrlRadiusImg(lg.b)):35;
+  mnx-=R;mxx+=R;mny-=R;mxy+=R;
   const bw=Math.max(1,mxx-mnx),bh=Math.max(1,mxy-mny),mw=MA.clientWidth,mh=MA.clientHeight;
   zoom=Math.max(0.02,Math.min(40,Math.min(mw/bw,mh/bh)/1.15*0.95));
   panX=mw/2-zoom*(mnx+mxx)/2;panY=mh/2-zoom*(mny+mxy)/2;
@@ -624,7 +630,7 @@ function syncTraceControls(){
 function computeLeg(i){
   if(i<0||i>=controls.length-1)return;
   const a=controls[i],b=controls[i+1];
-  if(Math.hypot(b.x-a.x,b.y-a.y)<3){legResults[i]=[];return;}
+  if(!isRealLeg(i)){legResults[i]=[];return;}
   const ratio=1+(+$('p-ratio').value)/100,minSepPx=(+$('p-sep').value)/mpp,maxK=+$('p-maxk').value;
   legResults[i]=findRouteChoices({x:a.x,y:a.y},{x:b.x,y:b.y},ratio,minSepPx,maxK);
 }
@@ -635,7 +641,7 @@ function validateCourse(){
   const n=coursePts.length;
   controls=coursePts.map((p,i)=>({x:Math.round(p.x),y:Math.round(p.y),code:courseLabel(i,n),type:i===0?0:(i===n-1?2:1)}));
   courseMode=false;$('btn-course').classList.remove('p');$('btn-course').textContent='Tracer le parcours';
-  legIdx=0;legResults={};updateLegUI();focusLeg();closePanels();
+  legIdx=firstRealLeg();legResults={};updateLegUI();focusLeg();closePanels();
   log(`Parcours validé : ${n} postes (S → F)`,'ok');stat(n+' postes');
 }
 function drawCoursePts(){
@@ -763,7 +769,7 @@ function useXmlCourse(reposition){
   });
   mapScale=xmlData.scale||mapScale;
   fitGeoFromControls();updateGpxBtn();
-  legIdx=0;legResults={};updateLegUI();focusLeg();
+  legIdx=firstRealLeg();legResults={};updateLegUI();focusLeg();
   if(!reposition)closePanels();
   log(`Parcours « ${co.name} » : ${controls.length} postes${useGeo?' (géoréf)':''}.`,'ok');stat(controls.length+' postes');
 }
@@ -830,7 +836,7 @@ function parseLivelox(d){
     }
   }
   fitGeoFromControls();updateGpxBtn();   // postes lat/lng → géoréf pixel↔lat/lng (pour GPX)
-  legIdx=0;
+  legIdx=firstRealLeg();
   log(`Livelox : ${controls.length} postes, parcours « ${course&&course.name||'?'} » (${(course&&course.length||0)}m), ${mpp.toFixed(3)} m/px`,'ok');
   if(imgUrl){window._lvxImgUrl=imgUrl;fetchImageSmart(imgUrl);}
   updateLegUI();focusLeg();
@@ -911,18 +917,19 @@ async function tryLoadShare(){
     controls=st.controls||[];eventClassId=st.classId||null;northUp=!!st.northUp;
     if(st.detail)$('p-detail').value=st.detail;if(st.thin!=null)$('p-thin').value=st.thin;
     if(st.close!=null)$('p-close').value=st.close;if(st.clear!=null)$('p-clear').value=st.clear;
-    const restore=()=>{
+    const restore=(cb)=>{
       legResults={};
       for(const k in (st.legs||{}))legResults[k]=st.legs[k].map(r=>({path:r.path,distPx:r.distPx,manual:r.manual}));
+      if(cb)realignShareToImage(cb);     // recale si la carte Livelox a changé de résolution
       pendingBrush=(st.brush&&st.brush.length)?st.brush:null;
-      legIdx=0;updateLegUI();focusLeg();
+      legIdx=firstRealLeg();updateLegUI();focusLeg();
       log('Parcours partagé chargé ✓'+(pendingBrush?' (clique « Analyser la carte » pour réappliquer le pinceau)':''),'ok');
     };
     if(st.classId){
       const cb=await (await fetch('/api/classblob?classId='+st.classId)).json();
       const iu=(cb.map.images&&cb.map.images[0].url)||cb.map.url;
       const b=await (await fetch('/api/image?url='+encodeURIComponent(iu))).blob();
-      loadImage(URL.createObjectURL(b),'partage',restore);
+      loadImage(URL.createObjectURL(b),'partage',()=>restore(cb));
     }else if(st.img){loadImage(st.img,'partage',restore);}
     else restore();
   }catch(e){log('Partage introuvable : '+e.message,'er');stat('partage introuvable');}
@@ -1026,6 +1033,53 @@ function pixelToLatLng(px,py){
   }
   if(geoAffine){const a=geoAffine;return {lng:a.lng[0]*px+a.lng[1]*py+a.lng[2],lat:a.lat[0]*px+a.lat[1]*py+a.lat[2]};}
   return null;
+}
+// Enregistre à la volée un EPSG UTM/WGS84 (326zz nord, 327zz sud) s'il manque.
+function ensureProjEpsg(code){
+  if(!window.proj4||!code)return null;const id='EPSG:'+code;
+  try{if(proj4.defs(id))return id;}catch(e){}
+  if(code>=32601&&code<=32660){proj4.defs(id,'+proj=utm +zone='+(code-32600)+' +datum=WGS84 +units=m +no_defs');return id;}
+  if(code>=32701&&code<=32760){proj4.defs(id,'+proj=utm +zone='+(code-32700)+' +south +datum=WGS84 +units=m +no_defs');return id;}
+  return null;
+}
+// Affine ancien→actuel (nx=ax·ox+bx·oy+cx ; ny=ay·ox+by·oy+cy) par moindres carrés.
+function fitAffineXY(pairs){
+  function solve(getV){
+    let Sxx=0,Sxy=0,Sx=0,Syy=0,Sy=0,Sn=pairs.length,Sxv=0,Syv=0,Sv=0;
+    for(const p of pairs){const x=p.ox,y=p.oy,v=getV(p);Sxx+=x*x;Sxy+=x*y;Sx+=x;Syy+=y*y;Sy+=y;Sxv+=x*v;Syv+=y*v;Sv+=v;}
+    return solve3([[Sxx,Sxy,Sx],[Sxy,Syy,Sy],[Sx,Sy,Sn]],[Sxv,Syv,Sv]);
+  }
+  const X=solve(p=>p.nx),Y=solve(p=>p.ny);
+  if(!X||!Y)return null;
+  return {ax:X[0],bx:X[1],cx:X[2],ay:Y[0],by:Y[1],cy:Y[2]};
+}
+// Partage Livelox : Livelox peut re-générer la carte à une autre résolution depuis la
+// création du lien → la géométrie stockée (postes + tracés) est dans l'ancien espace
+// pixel. On la recale sur l'image actuelle via une affine estimée depuis les lat/lng.
+function realignShareToImage(cb){
+  const pj=cb&&cb.map&&cb.map.projection;if(!pj||!pj.matrix)return;
+  const M=pj.matrix,ep=ensureProjEpsg(pj.epsgCode);if(!ep)return;
+  const pairs=[];
+  for(const c of controls){
+    if(c.lat==null||c.lng==null)continue;
+    let w;try{w=proj4('EPSG:4326',ep,[c.lng,c.lat]);}catch(e){return;}
+    pairs.push({ox:c.x,oy:c.y,nx:M[0][0]*w[0]+M[0][1]*w[1]+M[0][2],ny:M[1][0]*w[0]+M[1][1]*w[1]+M[1][2]});
+  }
+  if(pairs.length<3)return;
+  const med=pairs.map(p=>Math.hypot(p.nx-p.ox,p.ny-p.oy)).sort((a,b)=>a-b)[pairs.length>>1];
+  if(med<3)return;                       // déjà aligné → on ne touche à rien
+  const T=fitAffineXY(pairs);if(!T)return;
+  const ap=p=>({x:T.ax*p.x+T.bx*p.y+T.cx,y:T.ay*p.x+T.by*p.y+T.cy});
+  controls.forEach(c=>{const q=ap(c);c.x=Math.round(q.x);c.y=Math.round(q.y);});
+  for(const k in legResults){const arr=legResults[k];if(!arr)continue;arr.forEach(r=>{
+    r.path=r.path.map(ap);
+    let d=0;for(let i=1;i<r.path.length;i++)d+=Math.hypot(r.path[i].x-r.path[i-1].x,r.path[i].y-r.path[i-1].y);
+    r.distPx=d;
+  });}
+  const nm=1/Math.sqrt(M[0][0]*M[0][0]+M[1][0]*M[1][0]);
+  if(nm>0&&isFinite(nm)){mpp=nm;$('mpp').value=mpp.toFixed(4);}
+  fitGeoFromControls();updateGpxBtn();
+  log('Partage recalé sur la carte actuelle (résolution Livelox différente).','ok');
 }
 // lat/lng → pixel via le world file (proj WGS84→projeté puis inverse de l'affine)
 function latLngToPixel(lat,lng){
@@ -1588,6 +1642,7 @@ function cycleOverlay(){
 function analyzeCurrentLeg(){
   if(!grid){log('Analyse la carte d\'abord','er');return;}
   const lg=currentLeg();if(!lg){log('Pas de tronçon','er');return;}
+  if(!isRealLeg(legIdx)){legResults[legIdx]=[];log('Tronçon nul (<5 m) — ignoré.','wa');renderChoices();return;}
   stat('calcul…');log(`Calcul ${lg.name}…`,'in');
   setTimeout(()=>{
     const t0=performance.now();
@@ -1613,7 +1668,8 @@ function analyzeAllLegs(){
   (function step(){
     if(i>=total){log(`Parcours complet analysé en ${((performance.now()-t0)/1000).toFixed(1)}s`,'ok');stat('terminé');render();renderChoices();return;}
     stat(`calcul ${i+1}/${total}…`);
-    legResults[i]=findRouteChoices({x:controls[i].x,y:controls[i].y},{x:controls[i+1].x,y:controls[i+1].y},ratio,minSepPx,maxK);
+    if(isRealLeg(i))legResults[i]=findRouteChoices({x:controls[i].x,y:controls[i].y},{x:controls[i+1].x,y:controls[i+1].y},ratio,minSepPx,maxK);
+    else legResults[i]=[];               // tronçon nul (<5 m) → ignoré
     i++;render();
     setTimeout(step,0);
   })();
@@ -1683,19 +1739,27 @@ function deleteChoice(i){
 // ════════════════════════════════════════════════════════════════════════════
 //  Tronçons (legs)
 // ════════════════════════════════════════════════════════════════════════════
+// Tronçon « nul » : deux postes confondus (<5 m sur le terrain). On ne l'analyse pas,
+// on ne le compte pas dans le total et la navigation le saute (ex. poste spectateur
+// répété, papillon). 5 m car en sprint un interposte réel fait toujours bien plus.
+const MIN_LEG_M=5;
+function legLenM(i){const a=controls[i],b=controls[i+1];if(!a||!b)return Infinity;return px2m(Math.hypot(b.x-a.x,b.y-a.y));}
+function isRealLeg(i){return i>=0&&i<controls.length-1&&legLenM(i)>=MIN_LEG_M;}
+function firstRealLeg(){for(let i=0;i<controls.length-1;i++)if(isRealLeg(i))return i;return 0;}
 function currentLeg(){
   if(controls.length<2)return null;
   const a=controls[legIdx],b=controls[legIdx+1];
   if(!a||!b)return null;
   return {p1:{x:a.x,y:a.y},p2:{x:b.x,y:b.y},name:`${a.code} → ${b.code}`,a,b};
 }
-function prevLeg(){if(legIdx>0){legIdx--;updateLegUI();focusLeg();}}
-function nextLeg(){if(legIdx<controls.length-2){legIdx++;updateLegUI();focusLeg();}}
+function prevLeg(){for(let i=legIdx-1;i>=0;i--)if(isRealLeg(i)){legIdx=i;updateLegUI();focusLeg();return;}}
+function nextLeg(){for(let i=legIdx+1;i<=controls.length-2;i++)if(isRealLeg(i)){legIdx=i;updateLegUI();focusLeg();return;}}
 // distance totale du parcours en sommant, par tronçon, le choix le plus court
 // (ou la ligne droite si ce tronçon n'a pas été analysé)
 function totalCourseDistance(){
   let tot=0;
   for(let i=0;i<controls.length-1;i++){
+    if(!isRealLeg(i))continue;          // tronçon nul (<5 m) non compté
     const res=legResults[i];
     if(res&&res.length)tot+=px2m(Math.min(...res.map(r=>r.distPx)));
     else{const a=controls[i],b=controls[i+1];tot+=px2m(Math.hypot(b.x-a.x,b.y-a.y));}
@@ -1729,7 +1793,7 @@ function renderChoices(){
     chip.innerHTML=`<span class="dist" style="color:${r.color}">${px2m(r.distPx).toFixed(0)}m</span>
       <span class="rel">${rel}</span>
       <span class="del" title="Supprimer">✕</span>`;
-    chip.addEventListener('mouseenter',()=>{render();drawPath(r.path,r.color,true);});
+    chip.addEventListener('mouseenter',()=>{render();drawPath(r.path,r.color,true,choiceOffset(i,res.length));});
     chip.addEventListener('mouseleave',()=>render());
     chip.querySelector('.del').addEventListener('click',e=>{e.stopPropagation();deleteChoice(i);});
     el.appendChild(chip);
@@ -1772,7 +1836,7 @@ function render(){
   // tracé manuel d'un parcours (mode Parcours), où on positionne seulement les postes.
   if(!courseMode){
     const res=legResults[legIdx];
-    if(res){res.forEach(r=>drawPath(r.path,r.color,false));drawChoiceLabels(res);}
+    if(res){res.forEach((r,i)=>drawPath(r.path,r.color,false,choiceOffset(i,res.length)));drawChoiceLabels(res);}
   }
   // surbrillance tronçon courant
   const lg=currentLeg();
@@ -1810,13 +1874,30 @@ function drawControl(c,i,hl){
   }
 }
 function drawDot(p,col,lbl){const s=i2s(p.x,p.y),r=Math.max(5,7*zoom);ctx.beginPath();ctx.arc(s.x,s.y,r,0,7);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.font='bold 11px monospace';ctx.fillText(lbl,s.x,s.y-r-2);}
-function drawPath(path,color,thick){
+// décale une polyligne écran de `off` px perpendiculairement (normale = tangente
+// moyenne tournée de 90°) → des choix superposés deviennent des rubans parallèles.
+function offsetScreenPts(S,off){
+  if(!off)return S;const n=S.length,out=[];
+  for(let i=0;i<n;i++){
+    let dx=0,dy=0;
+    if(i>0){dx+=S[i].x-S[i-1].x;dy+=S[i].y-S[i-1].y;}
+    if(i<n-1){dx+=S[i+1].x-S[i].x;dy+=S[i+1].y-S[i].y;}
+    const len=Math.hypot(dx,dy)||1;
+    out.push({x:S[i].x-dy/len*off,y:S[i].y+dx/len*off});
+  }
+  return out;
+}
+function drawPath(path,color,thick,off){
   if(!path||path.length<2)return;
+  let S=path.map(p=>i2s(p.x,p.y));
+  if(off)S=offsetScreenPts(S,off);
   ctx.beginPath();
-  path.forEach((p,j)=>{const s=i2s(p.x,p.y);j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
+  S.forEach((s,j)=>j?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y));
   ctx.strokeStyle=color;ctx.lineWidth=thick?Math.max(3,4.5*zoom):Math.max(2,3*zoom);
   ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
 }
+// décalage perpendiculaire du choix i parmi n (centré sur 0, pas = largeur de trait)
+function choiceOffset(i,n){return (i-(n-1)/2)*Math.max(2,3*zoom);}
 // point à la fraction f (0..1) de la longueur d'arc d'un tracé
 function pointAtFraction(path,f){
   if(!path||!path.length)return null;if(path.length===1)return path[0];
