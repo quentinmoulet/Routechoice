@@ -4,6 +4,9 @@
 [build]
   publish = "."
   functions = "netlify/functions"
+  # Genere un _redirects different selon la variable APP (voir netlify-build.mjs) :
+  # site principal -> racine = index.html ; 2e site (APP=splits) -> racine = splits.html.
+  command = "node netlify-build.mjs"
 
 [build.environment]
   NODE_VERSION = "20"

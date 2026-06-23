@@ -3,3 +3,5 @@ shares/
 .netlify/
 test-data/
 __pycache__/
+
+_redirects
