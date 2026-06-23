@@ -16,6 +16,7 @@ Endpoints proxy :
 import http.server, socketserver, urllib.request, urllib.parse, json, os, uuid
 
 SHARE_DIR = None  # défini sous __main__
+_WS = {"opener": None}  # cache de la session WinSplits (cookie ASP)
 
 
 class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -53,6 +54,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._class_blob(urllib.parse.parse_qs(u.query))
         if u.path == "/api/image":
             return self._image(urllib.parse.parse_qs(u.query))
+        if u.path == "/api/ws":
+            return self._winsplits(urllib.parse.parse_qs(u.query))
         if u.path == "/api/share":
             sid = (urllib.parse.parse_qs(u.query).get("id") or [""])[0]
             fp = os.path.join(SHARE_DIR, os.path.basename(sid) + ".json")
@@ -102,6 +105,76 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._send(200, r.read(), "application/json")
         except Exception as e:
             return self._send(502, json.dumps({"error": str(e)}), "application/json")
+
+    def _winsplits(self, qs):
+        # Relai WinSplits Online : session cookie ASP + recherche/affichage.
+        op = (qs.get("op") or [""])[0]
+        if op not in ("events", "classes", "table"):
+            return self._send(400, '{"error":"op invalide"}', "application/json")
+        try:
+            html = self._ws_run(op, qs)
+            if (not html) or ("cookieError" in html) or ("internal server error" in html.lower()):
+                _WS["opener"] = None  # cookie expire -> nouvelle session, un essai
+                html = self._ws_run(op, qs)
+            return self._send(200, html, "text/html; charset=utf-8")
+        except Exception as e:
+            return self._send(502, json.dumps({"error": str(e)}), "application/json")
+
+    def _ws_session(self):
+        # Opener avec cookie de session, mis en cache (handshake une seule fois).
+        if _WS.get("opener"):
+            return _WS["opener"]
+        import http.cookiejar
+        base = "https://obasen.orientering.se/winsplits/online/en/"
+        cj = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+        hdr = {"User-Agent": UA}
+        opener.open(urllib.request.Request(base + "default.asp", headers=hdr), timeout=30).read()
+        opener.open(urllib.request.Request(base + "default.asp?ct=true", headers=hdr), timeout=30).read()
+        _WS["opener"] = opener
+        return opener
+
+    def _ws_run(self, op, qs):
+        import re
+        base = "https://obasen.orientering.se/winsplits/online/en/"
+        hdr = {"User-Agent": UA}
+        opener = self._ws_session()
+
+        def iso2ws(iso):
+            m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", iso or "")
+            return "%s/%s/%s" % (m.group(3), m.group(2), m.group(1)) if m else ""
+
+        if op == "events":
+            frm = (qs.get("from") or [""])[0]
+            to = (qs.get("to") or [frm])[0]
+            form = urllib.parse.urlencode({
+                "eventSelectionDateType": "interval",
+                "eventSelectionDateLast1": "1",
+                "eventSelectionDateLast2": "month",
+                "eventSelectionDateInterval1": iso2ws(frm),
+                "eventSelectionDateInterval2": iso2ws(to),
+                "eventSelectionEventName": "",
+                "eventSelectionEventOrganiser": "",
+                "eventSelectionCountryCode": "ALL",
+                "eventSelectionEventClassificationInternational": "on",
+                "eventSelectionEventClassificationNational": "on",
+                "eventSelectionEventClassificationRegional": "on",
+                "eventSelectionEventClassificationLocal": "on",
+                "eventSelectionEventClassificationClub": "on",
+                "searchEvents": "Search events",
+            }).encode("ascii")
+            req = urllib.request.Request(base + "events.asp", data=form, headers=hdr)
+        elif op == "classes":
+            cid = (qs.get("id") or [""])[0]
+            req = urllib.request.Request(base + "classes.asp?databaseId=" + urllib.parse.quote(cid), headers=hdr)
+        else:  # table
+            cid = (qs.get("id") or [""])[0]
+            cat = (qs.get("cat") or [""])[0]
+            req = urllib.request.Request(
+                base + "table.asp?databaseId=" + urllib.parse.quote(cid) + "&categoryId=" + urllib.parse.quote(cat),
+                headers=hdr)
+
+        return opener.open(req, timeout=60).read().decode("iso-8859-1")
 
     def _image(self, qs):
         url = (qs.get("url") or [None])[0]

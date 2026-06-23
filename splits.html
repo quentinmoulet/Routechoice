@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Splits — temps intermédiaires CO</title>
+<link rel="icon" href="icon.svg" />
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --ink:#1d2733; --muted:#6b7886;
+    --line:#e1e7ee; --ac:#3d9bff; --ac2:#ff8a3d;
+    --g1:#ffcf1f; --g1t:#6a5200;   /* 1er */
+    --g2:#cfd6dd; --g2t:#2b3540;   /* 2e  */
+    --g3:#ff8a5c; --g3t:#5a1c00;   /* 3e  */
+    --row:#ffffff; --row2:#f6f9fc; --hl:#eaf4ff;
+    --radius:12px;
+    font-synthesis-weight:none;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  a{color:var(--ac);text-decoration:none}
+
+  /* ---------- Barre du haut ---------- */
+  header{
+    flex:0 0 auto; background:var(--panel); border-bottom:1px solid var(--line);
+    padding:10px 14px; display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap;
+    z-index:30;
+  }
+  .brand{font-weight:800;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+  .brand b{color:var(--ac)}
+  .controls{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;flex:1}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  input[type=date],select,input[type=text]{
+    font:inherit;font-weight:600;padding:7px 10px;border:1px solid var(--line);
+    border-radius:9px;background:#fff;color:var(--ink);min-width:150px;
+  }
+  button{
+    font:inherit;font-weight:700;cursor:pointer;border:0;border-radius:9px;
+    padding:8px 13px;background:var(--ac);color:#fff;white-space:nowrap;
+  }
+  button.ghost{background:#eef3f8;color:var(--ink);border:1px solid var(--line)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.5;cursor:default}
+
+  .saved{display:flex;flex-direction:column;gap:5px;min-width:230px;max-width:340px}
+  .saved .head{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .savedlist{display:flex;flex-direction:column;gap:4px;max-height:88px;overflow:auto}
+  .chip{
+    display:flex;align-items:center;gap:8px;background:#f2f6fb;border:1px solid var(--line);
+    border-radius:8px;padding:5px 8px;font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .chip:hover{background:var(--hl)}
+  .chip.on{border-color:var(--ac);background:var(--hl)}
+  .chip .x{margin-left:auto;color:var(--muted);font-weight:800;padding:0 3px;border-radius:5px}
+  .chip .x:hover{color:#e23;background:#fff}
+  .chip .dt{color:var(--muted);font-size:11px;font-weight:700}
+
+  /* ---------- Liste d'évènements du jour ---------- */
+  #events{flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
+    max-height:34vh;overflow:auto;padding:6px 14px;display:none}
+  #events.show{display:block}
+  .evrow{display:flex;gap:12px;align-items:center;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:14px}
+  .evrow:hover{background:var(--hl)}
+  .evrow .nm{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .evrow .meta{color:var(--muted);font-size:12px;white-space:nowrap}
+  .evrow .cnt{font-weight:800;color:var(--ac);min-width:34px;text-align:right}
+  .evhint{color:var(--muted);font-size:13px;padding:8px}
+
+  /* ---------- Sous-barre catégorie ---------- */
+  #subbar{flex:0 0 auto;display:none;gap:14px;align-items:center;flex-wrap:wrap;
+    padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  #subbar.show{display:flex}
+  #subbar .title{font-weight:800;font-size:15px}
+  #subbar .title small{color:var(--muted);font-weight:600;margin-left:6px}
+
+  /* ---------- Tableau des splits ---------- */
+  #wrap{flex:1 1 auto;overflow:auto;position:relative}
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--muted);font-size:15px;text-align:center;padding:30px;line-height:1.6}
+  table{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;white-space:nowrap}
+  thead th{position:sticky;top:0;z-index:6;background:#eef3f8;border-bottom:2px solid var(--line)}
+  th,td{padding:0}
+  .num{font-weight:600;font-size:13px}
+
+  /* colonnes figées — fond OPAQUE explicite (sinon le défilement transparaît dessous) */
+  th.cpos,td.cpos{position:sticky;left:0;z-index:5;width:36px;min-width:36px;text-align:center}
+  th.cname,td.cname{position:sticky;z-index:5;text-align:left;min-width:168px;max-width:168px}
+  th.crt,td.crt{position:sticky;right:0;z-index:5;text-align:left;min-width:150px;max-width:150px;
+    border-left:1px solid var(--line)}
+  thead th.cpos,thead th.cname,thead th.crt{z-index:8}
+
+  tbody tr{background:var(--row);cursor:pointer}
+  tbody tr:nth-child(even){background:var(--row2)}
+  td.cpos,td.cname,td.crt{background:var(--row)}
+  tbody tr:nth-child(even) td.cpos,tbody tr:nth-child(even) td.cname,tbody tr:nth-child(even) td.crt{background:var(--row2)}
+  tbody tr:hover{background:var(--hl)}
+  tbody tr:hover td.cpos,tbody tr:hover td.cname,tbody tr:hover td.crt{background:var(--hl)}
+  tbody tr.sel{background:#dcebff}
+  tbody tr.sel td.cpos,tbody tr.sel td.cname,tbody tr.sel td.crt{background:#dcebff}
+  tbody tr.sel td{box-shadow:inset 0 0 0 9999px rgba(61,155,255,.10)}
+
+  td.cpos{padding:7px 2px;color:var(--muted);font-weight:700;font-size:13px;border-bottom:1px solid var(--line)}
+  td.cname{padding:7px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+  td.cname .n{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis}
+  td.cname .sub{font-size:11px;color:var(--muted);font-weight:600;margin-top:1px}
+  td.cname .sub b{color:var(--ink)}
+  td.crt{padding:7px 10px;border-bottom:1px solid var(--line);font-weight:700;font-size:14px}
+  td.crt .n{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis}
+  td.crt .sub{font-size:11px;color:var(--muted);font-weight:700}
+
+  /* en-tête de poste : gros numéro, code dessous, PAS de soulignage */
+  th.leg{padding:5px 6px;border-bottom:2px solid var(--line);min-width:74px}
+  th.leg .no{font-size:15px;font-weight:700;line-height:1}
+  th.leg .cd{font-size:10px;color:var(--muted);font-weight:600;margin-top:2px}
+
+  td.leg{border-bottom:1px solid var(--line);border-left:1px solid #eef1f5;text-align:center;
+    padding:7px 6px;min-width:74px}
+  td.leg .split{font-size:14px;font-weight:600;line-height:1.3}
+  td.leg .cum{font-size:13px;font-weight:600;color:var(--muted);line-height:1.3}
+  td.leg .rk{font-size:9px;font-weight:700;vertical-align:super;margin-left:2px}
+  td.leg [title]{cursor:help}
+  /* rangs des SPLITS : pastille colorée (fond) pour les distinguer */
+  .r1{color:var(--g1t)} .r1.bg{background:var(--g1)}
+  .r2{color:var(--g2t)} .r2.bg{background:var(--g2)}
+  .r3{color:var(--g3t)} .r3.bg{background:var(--g3)}
+  td.leg .split.r1,td.leg .split.r2,td.leg .split.r3{border-radius:6px;padding:1px 3px}
+  /* rangs des TOTAUX : seulement la couleur du texte (jaune / gris / rouge) */
+  td.leg .cum.r1{color:#c08a00} td.leg .cum.r2{color:#67737f} td.leg .cum.r3{color:#e23b2e}
+
+  /* coureurs épinglés */
+  tfoot td{position:sticky;bottom:0;z-index:7;background:#fff8ee;border-top:2px solid var(--ac2)}
+  tfoot tr td.cpos,tfoot tr td.cname,tfoot tr td.crt{z-index:9;background:#fff8ee}
+  /* mode comparaison actif */
+  button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+
+  /* import */
+  #imp{display:none;position:fixed;inset:0;background:rgba(20,28,38,.45);z-index:50;align-items:center;justify-content:center}
+  #imp.show{display:flex}
+  .modal{background:#fff;border-radius:16px;padding:22px;max-width:480px;width:92%;box-shadow:0 18px 60px rgba(0,0,0,.3)}
+  .modal h3{margin:0 0 6px}
+  .modal p{color:var(--muted);font-size:13px;margin:0 0 14px;line-height:1.5}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:26px;text-align:center;color:var(--muted);
+    font-weight:700;cursor:pointer}
+  .drop.over{border-color:var(--ac);background:var(--hl);color:var(--ink)}
+  .modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2733;color:#fff;
+    padding:10px 16px;border-radius:10px;font-weight:700;font-size:14px;z-index:60;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;
+    animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">⏱ <b>Splits</b></div>
+  <div class="controls">
+    <div class="field">
+      <label>Date de la course</label>
+      <div style="display:flex;gap:6px">
+        <input type="date" id="date" />
+        <button id="search">Chercher</button>
+      </div>
+    </div>
+    <div class="saved">
+      <div class="head">Mes évènements</div>
+      <div class="savedlist" id="savedlist"><div class="evhint" style="padding:2px">Aucun pour l'instant.</div></div>
+    </div>
+    <div class="field">
+      <label>Import</label>
+      <button class="ghost" id="importBtn">Importer PDF / XML</button>
+    </div>
+  </div>
+</header>
+
+<div id="events"></div>
+
+<div id="subbar">
+  <div class="title" id="evtitle"></div>
+  <div class="field" style="gap:2px">
+    <label>Catégorie</label>
+    <select id="catsel"></select>
+  </div>
+  <button class="ghost" id="cmpBtn" style="display:none">Comparer les épinglés</button>
+  <div style="color:var(--muted);font-size:12px;font-weight:600" id="pinhint">Clique un coureur pour l'épingler en bas.</div>
+</div>
+
+<div id="wrap">
+  <div id="empty">Choisis une date puis un évènement — ou importe un fichier de splits.<br>Tout est enregistré dans « Mes évènements ».</div>
+</div>
+
+<!-- modale import -->
+<div id="imp">
+  <div class="modal">
+    <h3>Importer des splits</h3>
+    <p>Dépose un fichier <b>XML</b> (IOF 3.0, depuis Eventor/MeOS…) ou un <b>PDF</b> de temps intermédiaires (lignes de 6 postes, plusieurs lignes par coureur).</p>
+    <div class="drop" id="drop">Clique ou dépose un fichier ici<br><small>.xml · .pdf</small></div>
+    <input type="file" id="file" accept=".xml,.pdf" hidden />
+    <div class="row"><button class="ghost" id="impClose">Fermer</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================ état & utils ============================ */
+const $ = s => document.querySelector(s);
+const PROXY = "/api/ws";
+const LS_EVENTS = "splits.savedEvents.v1";
+const pinned = new Set();        // ids de coureurs épinglés (par index)
+let compareMode = false;         // comparaison entre coureurs épinglés
+let current = null;              // modèle affiché {title, source, categories?, ...}
+
+const toast = (m,ms=2200)=>{const t=$("#toast");t.innerHTML=m;t.classList.add("show");clearTimeout(toast._);toast._=setTimeout(()=>t.classList.remove("show"),ms);};
+
+// secondes -> "m:ss" ou "h:mm:ss"
+function fmtSec(t){
+  if(t==null||isNaN(t)) return "";
+  t=Math.round(t); const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;
+  return h? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}` : `${m}:${String(s).padStart(2,"0")}`;
+}
+const todayISO = ()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);};
+
+/* ============================ proxy / réseau ============================ */
+async function fetchHtml(params){
+  const u=PROXY+"?"+new URLSearchParams(params).toString();
+  const r=await fetch(u);
+  const ct=r.headers.get("content-type")||"";
+  if(ct.includes("application/json")){const j=await r.json();throw new Error(j.error||"erreur proxy");}
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.text();
+}
+const parseDoc = html => new DOMParser().parseFromString(html,"text/html");
+const cellText = td => (td.textContent||"").replace(/ /g," ").replace(/\s+/g," ").trim();
+
+/* ============================ recherche d'évènements ============================ */
+async function searchEvents(iso){
+  const box=$("#events"); box.classList.add("show");
+  box.innerHTML='<div class="evhint"><span class="spin"></span>Recherche des courses du '+iso+'…</div>';
+  try{
+    const html=await fetchHtml({op:"events",from:iso,to:iso});
+    const doc=parseDoc(html);
+    const evs=[];
+    doc.querySelectorAll("tr").forEach(tr=>{
+      const a=tr.querySelector('a[href*="page=classes"]'); if(!a) return;
+      const id=(a.getAttribute("href").match(/databaseId=(\d+)/)||[])[1]; if(!id) return;
+      const tds=[...tr.querySelectorAll("td")].map(cellText);
+      if(!/^\d{2}\/\d{2}\/\d{4}$/.test(tds[0]||"")) return; // ignore lignes d'en-tête
+      // colonnes : date | nom | club | pays | nb
+      evs.push({id, name:cellText(a),
+        club:tds[2]||"", country:tds[3]||"", runners:tds[4]||"", date:tds[0]||iso});
+    });
+    if(!evs.length){box.innerHTML='<div class="evhint">Aucune course trouvée pour le '+iso+'.</div>';return;}
+    box.innerHTML="";
+    evs.forEach(ev=>{
+      const r=document.createElement("div");r.className="evrow";
+      r.innerHTML=`<span class="nm"></span><span class="meta"></span><span class="cnt"></span>`;
+      r.querySelector(".nm").textContent=ev.name;
+      r.querySelector(".meta").textContent=[ev.club,ev.country].filter(Boolean).join(" · ");
+      r.querySelector(".cnt").textContent=ev.runners?ev.runners+"👤":"";
+      r.onclick=()=>{ saveEvent(ev); openEvent(ev); box.classList.remove("show"); };
+      box.appendChild(r);
+    });
+  }catch(e){ box.innerHTML='<div class="evhint">Erreur : '+e.message+'. (Le proxy /api/ws doit tourner — lance <code>python server.py</code> en local.)</div>'; }
+}
+
+/* ============================ Mes évènements (localStorage) ============================ */
+function loadSaved(){ try{return JSON.parse(localStorage.getItem(LS_EVENTS)||"[]");}catch{return [];} }
+function writeSaved(a){ localStorage.setItem(LS_EVENTS,JSON.stringify(a.slice(0,60))); renderSaved(); }
+function saveEvent(ev){
+  const a=loadSaved(); if(a.some(x=>x.id===ev.id && x.kind!=="file")) {renderSaved();return;}
+  a.unshift({kind:"live",id:ev.id,name:ev.name,date:ev.date,club:ev.club}); writeSaved(a);
+}
+function saveFileEvent(model){
+  const a=loadSaved(); const id="f"+Date.now();
+  model._fid=id; a.unshift({kind:"file",id,name:model.title,date:model.date||"",payload:model}); writeSaved(a);
+  return id;
+}
+function renderSaved(){
+  const a=loadSaved(),box=$("#savedlist");
+  if(!a.length){box.innerHTML='<div class="evhint" style="padding:2px">Aucun pour l\'instant.</div>';return;}
+  box.innerHTML="";
+  a.forEach(ev=>{
+    const c=document.createElement("div");c.className="chip"+(current && (current._key===ev.id)?" on":"");
+    c.innerHTML=`<span class="dt"></span><span class="lbl" style="overflow:hidden;text-overflow:ellipsis"></span><span class="x" title="retirer">✕</span>`;
+    c.querySelector(".dt").textContent=ev.kind==="file"?"📄":(ev.date?ev.date.slice(0,5):"");
+    c.querySelector(".lbl").textContent=ev.name;
+    c.querySelector(".lbl").onclick=()=> ev.kind==="file"?openFileEvent(ev):openEvent(ev);
+    c.onclick=(e)=>{ if(e.target.classList.contains("x"))return; ev.kind==="file"?openFileEvent(ev):openEvent(ev); };
+    c.querySelector(".x").onclick=(e)=>{e.stopPropagation();writeSaved(loadSaved().filter(x=>x.id!==ev.id));};
+    box.appendChild(c);
+  });
+}
+
+/* ============================ ouverture évènement live ============================ */
+// Catégorie par défaut : celle avec "21" ; si plusieurs, celle avec M ou H ;
+// si encore plusieurs, celle avec E ou 1 (maj) ; sinon celle qui a le plus de postes.
+function pickDefaultCat(cats){
+  if(!cats.length) return 0;
+  let f=cats.map((c,i)=>({...c,i})).filter(c=>/21/.test(c.name));
+  if(f.length){
+    if(f.length>1){const mh=f.filter(c=>/[MH]/.test(c.name)); if(mh.length) f=mh;}
+    if(f.length>1){const e1=f.filter(c=>/[E1]/.test(c.name)); if(e1.length) f=e1;}
+    return f[0].i;
+  }
+  let bi=0; cats.forEach((c,i)=>{if((c.controls||0)>(cats[bi].controls||0)) bi=i;});
+  return bi;
+}
+async function openEvent(ev){
+  pinned.clear(); $("#events").classList.remove("show");
+  $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Chargement des catégories…</div>';
+  $("#subbar").classList.add("show");
+  $("#evtitle").innerHTML=ev.name+' <small>'+(ev.date||"")+'</small>';
+  try{
+    const html=await fetchHtml({op:"classes",id:ev.id});
+    const doc=parseDoc(html);
+    const cats=[];
+    // table classes : triplets [nom (lien) | nb coureurs | nb postes] (plusieurs par ligne)
+    doc.querySelectorAll('a[href*="categoryId="]').forEach(a=>{
+      const m=a.getAttribute("href").match(/categoryId=(\d+)/); const nm=cellText(a);
+      if(!m || !nm) return;
+      const td=a.closest("td");
+      const cCtrl=td && td.nextElementSibling && td.nextElementSibling.nextElementSibling;
+      cats.push({cat:m[1], name:nm, controls:parseInt(cellText(cCtrl||{}),10)||0});
+    });
+    current={_key:ev.id, source:"live", id:ev.id, title:ev.name, date:ev.date, cats};
+    const defIdx=pickDefaultCat(cats);
+    const sel=$("#catsel"); sel.innerHTML="";
+    cats.forEach((c,i)=>{const o=document.createElement("option");o.value=c.cat;o.textContent=c.name;if(i===defIdx)o.selected=true;sel.appendChild(o);});
+    sel.onchange=()=>loadTable(ev.id,sel.value);
+    renderSaved();
+    if(cats.length) loadTable(ev.id,cats[defIdx].cat);
+    else $("#wrap").innerHTML='<div id="empty">Aucune catégorie.</div>';
+  }catch(e){ $("#wrap").innerHTML='<div id="empty">Erreur : '+e.message+'</div>'; }
+}
+async function loadTable(id,cat){
+  pinned.clear();
+  $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Chargement des temps…</div>';
+  try{
+    const html=await fetchHtml({op:"table",id,cat});
+    const model=parseLiveTable(html);
+    model.title=current.title; model.category=(current.cats.find(c=>c.cat===cat)||{}).name||"";
+    render(model);
+  }catch(e){ $("#wrap").innerHTML='<div id="empty">Erreur : '+e.message+'</div>'; }
+}
+
+/* ============================ parsing table WinSplits ============================
+   table.asp existe en DEUX dispositions selon l'organisateur — on gère les deux,
+   puis on (re)calcule rangs + position + diff nous-mêmes (uniforme avec le XML) :
+
+   En-tête tronçons (ligne B d'en-tête) :  Club | S-1 (41) | 1-2 (42) | … | 16-F | Club
+
+   Layout A (sans rangs) :
+     coureur ligne A : pos | nom | split…              | nom
+     coureur ligne B : club|     | cumul…              | club
+   Layout B (avec rangs + Finish/Diff) :
+     coureur ligne A : pos | nom | Finish | Diff | split (rang) split (rang)… | nom
+     coureur ligne B : club|     | cumul (rang) cumul (rang)…                 | club
+
+   Temps WinSplits : "1.30"=1:30, "43.31"=43:31, "1:04.02"=1h04:02 (heure en
+   « : », min.sec en « . »), "1:05.30"=1:05:30 → on coupe sur « : » ET « . ».  */
+function dotToSec(s){
+  s=(s||"").trim();
+  if(!s||s==="-"||/[a-z]/i.test(s)) return null;     // mp / dsq / dnf …
+  let v=0; for(const p of s.split(/[.:]/)){ const n=parseInt(p,10); if(isNaN(n))return null; v=v*60+n; }
+  return v;
+}
+function parseLiveTable(html){
+  const doc=parseDoc(html);
+  // la grande table = celle qui contient le plus de <tr>
+  let best=null,n=-1;
+  doc.querySelectorAll("table").forEach(t=>{const c=t.querySelectorAll("tr").length;if(c>n){n=c;best=t;}});
+  if(!best) throw new Error("Table de splits introuvable");
+  const rows=[...best.querySelectorAll("tr")].map(r=>[...r.querySelectorAll("td,th")].map(cellText));
+  // en-tête des tronçons = la ligne contenant "S-1 (…)"
+  let hIdx=rows.findIndex(r=>r.some(c=>/^S-\w+/.test(c)));
+  if(hIdx<0) hIdx=rows.findIndex(r=>r.some(c=>/-\w+\s*\(\d+\)/.test(c)));
+  if(hIdx<0) hIdx=1;
+  const legs=rows[hIdx].slice(1,-1).map(s=>{   // retire les colonnes Club de bord
+    const m=s.match(/^([\wS]+)-([\w]+)/);
+    return {label:m?`${m[1]}-${m[2]}`:s, no:m?m[2]:s, code:(s.match(/\((\d+)\)/)||[])[1]||""};
+  });
+  // Layout B si les en-têtes annoncent une colonne "Finish time"
+  const hasFinDiff=rows.slice(0,hIdx+1).some(r=>r.some(c=>/finish\s*time/i.test(c)));
+  const metaA=2+(hasFinDiff?2:0);              // pos,nom[,finish,diff]
+  const isRank=c=>/^\(\d+\)$/.test(c||"");     // cellule de rang isolée
+  // ne garde que les valeurs de temps (retire les cellules de rang intercalées)
+  const vals=(arr)=>arr.filter(c=>!isRank(c)).map(dotToSec);
+  const runners=[];
+  for(let i=hIdx+1;i<rows.length;i++){
+    const a=rows[i];
+    // ligne coureur A : le nom est répété en première et dernière cellule
+    if(!(a.length>3 && a[1] && a[1]===a[a.length-1])) continue;
+    const b=rows[i+1]||[]; i++;               // consomme la ligne des cumuls
+    const splits=vals(a.slice(metaA,-1));     // temps de tronçon
+    const cums=vals(b.slice(1,-1));           // temps cumulés
+    // total fiable = colonne Finish si présente, sinon dernier cumul
+    const total=hasFinDiff?dotToSec(a[2]):(cums.length?cums[cums.length-1]:null);
+    const legData=legs.map((_,k)=>({
+      _split:splits[k]??null, _cum:cums[k]??null,
+      split:fmtSec(splits[k]), cum:fmtSec(cums[k]), srank:null, crank:null,
+    }));
+    runners.push({pos:a[0]||"", name:a[1], club:b[0]||"", finish:fmtSec(total), _total:total??null, diff:"", legs:legData});
+  }
+  // WinSplits trie déjà (position officielle, mispunch en bas) : on garde
+  // l'ordre/pos et on calcule seulement les rangs par tronçon + le diff.
+  computeLegRanks(runners,legs);
+  applyDiff(runners);
+  return {legs,runners,source:"live"};
+}
+
+/* ============================ rendu du tableau ============================ */
+function rkClass(r){ return r===1?"r1 bg":r===2?"r2 bg":r===3?"r3 bg":""; }
+function rkText(r){ return r===1?"r1":r===2?"r2":r===3?"r3":""; }
+
+function render(model){
+  current=Object.assign(current||{},{model});
+  if(model.category) $("#evtitle").innerHTML=(model.title||"")+' <small>'+(model.category||"")+'</small>';
+  const legs=model.legs, runners=model.runners;
+  const wrap=$("#wrap");
+  if(!runners.length){wrap.innerHTML='<div id="empty">Aucun coureur.</div>';return;}
+
+  // bouton comparateur : visible dès 2 coureurs épinglés
+  const canCompare=pinned.size>=2;
+  if(!canCompare) compareMode=false;
+  const cmp=$("#cmpBtn"); cmp.style.display=canCompare?"":"none"; cmp.classList.toggle("on",compareMode);
+  const compare=compareMode&&canCompare;
+
+  // meilleurs temps par tronçon, sur un ensemble d'index donné (+ rangs de sous-groupe)
+  const calc=(idxs)=>{
+    const bS=[],bC=[],rS=[],rC=[];
+    for(let k=0;k<legs.length;k++){
+      const ss=[],cc=[];
+      idxs.forEach(i=>{const d=runners[i].legs[k]||{};
+        if(d._split!=null) ss.push({i,v:d._split});
+        if(d._cum!=null)   cc.push({i,v:d._cum});});
+      bS[k]=ss.length?Math.min(...ss.map(x=>x.v)):null;
+      bC[k]=cc.length?Math.min(...cc.map(x=>x.v)):null;
+      rS[k]={}; rC[k]={};
+      ss.sort((a,b)=>a.v-b.v); let r=0,p=null,n=0; ss.forEach(x=>{n++;if(x.v!==p){r=n;p=x.v;}rS[k][x.i]=r;});
+      cc.sort((a,b)=>a.v-b.v); r=0;p=null;n=0;    cc.forEach(x=>{n++;if(x.v!==p){r=n;p=x.v;}rC[k][x.i]=r;});
+    }
+    return {bS,bC,rS,rC};
+  };
+  // tableau principal : toujours le champ complet ; zone épinglée : sous-groupe si compare
+  const all=calc(runners.map((_,i)=>i));
+  const sub=compare?calc([...pinned]):null;
+  const gap=(v,best)=>(v!=null&&best!=null&&v>best)?("+"+fmtSec(v-best)):"";  // "" si meilleur → pas d'infobulle
+
+  const head=`<thead><tr>
+    <th class="cpos">#</th>
+    <th class="cname" style="left:36px">Nom</th>
+    ${legs.map(l=>`<th class="leg"><div class="no">${l.no}</div>${l.code?`<div class="cd">${l.code}</div>`:""}</th>`).join("")}
+    <th class="crt">Coureur · total</th>
+  </tr></thead>`;
+
+  const rowHtml=(rr,idx,foot=false)=>{
+    const useSub=foot&&sub;                            // comparaison : seulement dans la zone épinglée
+    const ref=useSub?sub:all;
+    const cells=legs.map((l,k)=>{
+      const d=rr.legs[k]||{};
+      const sr=useSub?(sub.rS[k][idx]||null):d.srank;  // rang servant à colorer
+      const cr=useSub?(sub.rC[k][idx]||null):d.crank;
+      const gs=gap(d._split,ref.bS[k]), gc=gap(d._cum,ref.bC[k]);
+      return `<td class="leg">
+        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}"${gs?` title="${gs}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
+        <div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>
+      </td>`;
+    }).join("");
+    return `<tr data-i="${idx}" class="${pinned.has(idx)&&!foot?"sel":""}">
+      <td class="cpos">${rr.pos||""}</td>
+      <td class="cname" style="left:36px">
+        <div class="n">${esc(rr.name)}</div>
+        <div class="sub">${esc(rr.club||"")}</div>
+      </td>
+      ${cells}
+      <td class="crt">
+        <div class="n">${esc(rr.name)}</div>
+        <div class="sub"><b>${esc(rr.finish||"")}</b>${rr.diff?" · "+esc(rr.diff):""}</div>
+      </td>
+    </tr>`;
+  };
+
+  const body="<tbody>"+runners.map((r,i)=>rowHtml(r,i)).join("")+"</tbody>";
+  const footRows=[...pinned].sort((a,b)=>a-b).map(i=>rowHtml(runners[i],i,true)).join("");
+  const foot=footRows?`<tfoot>${footRows}</tfoot>`:"";
+
+  wrap.innerHTML=`<table>${head}${body}${foot}</table>`;
+  // empile TOUTES les lignes épinglées en bas : chaque ligne est décalée du
+  // cumul des hauteurs des lignes en dessous (sinon elles se superposent à bottom:0).
+  const footTrs=[...wrap.querySelectorAll("tfoot tr")];
+  let off=0;
+  for(let j=footTrs.length-1;j>=0;j--){
+    footTrs[j].querySelectorAll("td").forEach(td=>td.style.bottom=off+"px");
+    off+=footTrs[j].getBoundingClientRect().height;
+  }
+  // clic sur une ligne (corps OU pied) = épingler / désépingler
+  wrap.querySelectorAll("tbody tr,tfoot tr").forEach(tr=>tr.onclick=()=>{
+    const i=+tr.dataset.i; pinned.has(i)?pinned.delete(i):pinned.add(i); render(model);
+  });
+}
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ============================ ouverture évènement importé ============================ */
+function openFileEvent(ev){
+  pinned.clear(); $("#events").classList.remove("show");
+  const data=ev.payload;
+  current={_key:ev.id, source:"file", title:data.title, date:data.date, cats:data.categories.map((c,i)=>({cat:i,name:c.category}))};
+  $("#subbar").classList.add("show");
+  $("#evtitle").innerHTML=esc(data.title)+' <small>'+(data.date||"importé")+'</small>';
+  const sel=$("#catsel"); sel.innerHTML="";
+  data.categories.forEach((c,i)=>{const o=document.createElement("option");o.value=i;o.textContent=c.category||("Cat "+(i+1));sel.appendChild(o);});
+  sel.onchange=()=>{const m=data.categories[+sel.value];render(Object.assign({title:data.title},m));};
+  renderSaved();
+  const m=data.categories[0]; render(Object.assign({title:data.title},m));
+}
+
+/* ============================ import XML (IOF 3.0) ============================ */
+function parseIofXml(text){
+  const doc=new DOMParser().parseFromString(text,"application/xml");
+  if(doc.querySelector("parsererror")) throw new Error("XML illisible");
+  const T=(el,sel)=>{const e=el&&el.querySelector(sel);return e?e.textContent.trim():"";};
+  const evName=T(doc,"ResultList > Event > Name")||T(doc,"Event > Name")||"Import XML";
+  const date=(T(doc,"Event Date")||"").slice(0,10);
+  const categories=[];
+  doc.querySelectorAll("ClassResult").forEach(cr=>{
+    const cname=T(cr,"Class > Name")||T(cr,"Class > ShortName")||"Catégorie";
+    // ordre des postes : on prend la liste de codes la plus longue parmi les coureurs
+    let order=[];
+    cr.querySelectorAll("PersonResult > Result").forEach(res=>{
+      const codes=[...res.querySelectorAll("SplitTime")].map(s=>T(s,"ControlCode"));
+      if(codes.length>order.length) order=codes;
+    });
+    const legs=order.map((c,i)=>({label:(i===0?"S":order[i-1])+"-"+c, no:String(i+1), code:c}))
+      .concat([{label:order.length?order[order.length-1]+"-F":"F", no:"F", code:""}]);
+    const runners=[];
+    cr.querySelectorAll("PersonResult").forEach(pr=>{
+      const given=T(pr,"Person Name Given"), family=T(pr,"Person Name Family");
+      const name=(given+" "+family).trim()||T(pr,"Person Name")||"?";
+      const club=T(pr,"Organisation Name")||T(pr,"Organisation ShortName")||"";
+      const res=pr.querySelector("Result"); if(!res) return;
+      const total=+T(res,"Time")||null;
+      const pos=T(res,"Position")||"";
+      const map={}; res.querySelectorAll("SplitTime").forEach(s=>{map[T(s,"ControlCode")]=+T(s,"Time")||null;});
+      // temps cumulés -> on construit splits/cumuls
+      const cums=order.map(c=>map[c]); cums.push(total);
+      const legData=[]; let prev=0;
+      for(let i=0;i<cums.length;i++){
+        const cum=cums[i]; const split=(cum!=null&&prev!=null)?cum-prev:null;
+        legData.push({split:fmtSec(split), cum:fmtSec(cum), _split:split, _cum:cum, srank:null, crank:null});
+        if(cum!=null) prev=cum;
+      }
+      runners.push({pos,name,club,finish:fmtSec(total),_total:total,diff:"",legs:legData});
+    });
+    rankAndDiff(runners,legs);
+    categories.push({category:cname,legs,runners});
+  });
+  if(!categories.length) throw new Error("Aucun ClassResult dans le XML");
+  return {title:evName,date,categories,source:"file"};
+}
+
+// rangs par tronçon (split & cumul) — sans toucher à l'ordre ni aux positions
+function computeLegRanks(runners,legs){
+  for(let k=0;k<legs.length;k++){
+    rankBy(runners,r=>r.legs[k]&&r.legs[k]._split, (r,rk)=>{if(r.legs[k])r.legs[k].srank=rk;});
+    rankBy(runners,r=>r.legs[k]&&r.legs[k]._cum,  (r,rk)=>{if(r.legs[k])r.legs[k].crank=rk;});
+  }
+}
+// diff au gagnant (n'altère pas l'ordre)
+function applyDiff(runners){
+  const winner=Math.min(...runners.map(r=>r._total??Infinity));
+  runners.forEach(r=>{ r.diff=(r._total!=null&&isFinite(winner))?"+"+fmtSec(r._total-winner):""; });
+}
+// XML : pas d'ordre fourni -> on trie par temps, on (re)numérote, puis diff
+function rankAndDiff(runners,legs){
+  computeLegRanks(runners,legs);
+  runners.sort((a,b)=>(a._total??Infinity)-(b._total??Infinity));
+  runners.forEach((r,i)=>{ r.pos=r._total!=null?String(i+1):r.pos||""; });
+  applyDiff(runners);
+}
+function rankBy(runners,val,set){
+  const arr=runners.map(r=>({r,v:val(r)})).filter(x=>x.v!=null&&!isNaN(x.v)).sort((a,b)=>a.v-b.v);
+  let rk=0,prev=null,seen=0;
+  arr.forEach(x=>{seen++; if(x.v!==prev){rk=seen;prev=x.v;} set(x.r,rk);});
+}
+
+/* ============================ import PDF (best-effort) ============================ */
+async function parsePdf(buf){
+  if(!window.pdfjsLib){
+    await new Promise((ok,err)=>{const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=ok;s.onerror=()=>err(new Error("pdf.js indisponible (hors ligne ?)"));document.head.appendChild(s);});
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let lines=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p); const tc=await page.getTextContent();
+    // regroupe les items par ligne (même y, à 2px près)
+    const byY={};
+    tc.items.forEach(it=>{const y=Math.round(it.transform[5]); (byY[y]=byY[y]||[]).push(it);});
+    Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
+      const txt=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(i=>i.str).join(" ").replace(/\s+/g," ").trim();
+      if(txt) lines.push(txt);
+    });
+  }
+  return parseSplitLines(lines);
+}
+// Heuristique : un coureur = bloc de lignes ; chaque ligne contient des paires
+// "poste  temps(rang)" (6 postes par ligne). Détecte le nom (texte sans chiffres
+// de temps) et accumule les temps.
+function parseSplitLines(lines){
+  const tRe=/(\d{1,3}[:.]\d{2})/g;            // un temps mm:ss / m.ss
+  const runners=[]; let cur=null; let maxLegs=0;
+  const flush=()=>{ if(cur&&cur.times.length){ runners.push(cur);} cur=null; };
+  for(const ln of lines){
+    const times=ln.match(tRe);
+    const hasName=/[A-Za-zÀ-ÿ]{2,}/.test(ln.replace(tRe,""));
+    const looksHeader=/split|control|name|club|poste|temps|page|©|winsplits/i.test(ln);
+    if(looksHeader && (!times||times.length<2)) continue;
+    // nouveau coureur : ligne avec un nom net + peu/pas de temps, ou "1 Nom ..."
+    const startsRunner=/^\s*\d{1,3}[\.)]?\s+[A-Za-zÀ-ÿ]/.test(ln) || (hasName && (!times||times.length<=6 && /[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{2,}/.test(ln)) && !cur);
+    if(startsRunner && (!cur || cur.times.length>=6)){
+      flush();
+      const name=ln.replace(tRe,"").replace(/\(\d+\)/g,"").replace(/^\s*\d{1,3}[\.)]?\s*/,"").replace(/\s+/g," ").trim();
+      cur={name:name||("Coureur "+(runners.length+1)),times:[]};
+    }
+    if(!cur) cur={name:"Coureur "+(runners.length+1),times:[]};
+    if(times) times.forEach(t=>cur.times.push(t.replace(".",":")));
+  }
+  flush();
+  runners.forEach(r=>maxLegs=Math.max(maxLegs,r.times.length));
+  if(!runners.length) throw new Error("Aucun temps détecté dans le PDF. Format trop différent ?");
+  const legs=Array.from({length:maxLegs},(_,i)=>({label:(i+1)+"",no:String(i+1),code:""}));
+  const R=runners.map(r=>{
+    const legData=r.times.map(t=>({split:t,cum:"",srank:null,crank:null}));
+    while(legData.length<maxLegs) legData.push({split:"",cum:""});
+    return {pos:"",name:r.name,club:"",finish:r.times[r.times.length-1]||"",diff:"",legs:legData};
+  });
+  return {title:"Import PDF",date:"",categories:[{category:"Importé (PDF)",legs,runners:R}],source:"file"};
+}
+
+/* ============================ handlers import ============================ */
+$("#importBtn").onclick=()=>$("#imp").classList.add("show");
+$("#impClose").onclick=()=>$("#imp").classList.remove("show");
+$("#imp").onclick=e=>{if(e.target.id==="imp")$("#imp").classList.remove("show");};
+const drop=$("#drop"), file=$("#file");
+drop.onclick=()=>file.click();
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+file.onchange=()=>{if(file.files[0])handleFile(file.files[0]);};
+
+async function handleFile(f){
+  $("#imp").classList.remove("show");
+  toast('<span class="spin"></span>Lecture de '+f.name+'…',6000);
+  try{
+    let model;
+    if(/\.xml$/i.test(f.name)){ model=parseIofXml(await f.text()); }
+    else if(/\.pdf$/i.test(f.name)){ model=await parsePdf(await f.arrayBuffer()); }
+    else throw new Error("Format non géré (.xml ou .pdf)");
+    const id=saveFileEvent(model);
+    openFileEvent({id,payload:model});
+    toast("Importé : "+model.title);
+  }catch(e){ toast("❌ "+e.message,4000); }
+}
+
+/* ============================ démarrage ============================ */
+$("#cmpBtn").onclick=()=>{ compareMode=!compareMode; if(current&&current.model) render(current.model); };
+$("#date").value=todayISO();
+$("#search").onclick=()=>$("#date").value&&searchEvents($("#date").value);
+$("#date").onchange=()=>$("#date").value&&searchEvents($("#date").value);
+renderSaved();
+</script>
+</body>
+</html>
