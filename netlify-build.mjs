@@ -8,9 +8,10 @@ import { writeFileSync, rmSync } from "node:fs";
 
 try {
   if ((process.env.APP || "").toLowerCase() === "splits") {
-    // 200 = rewrite (l'URL reste "/"). /api/* et les autres chemins ne sont
-    // pas touches (la regle ne matche que la racine exacte).
-    writeFileSync("_redirects", "/    /splits.html    200\n");
+    // 200! = rewrite FORCE (l'URL reste "/"). Le "!" est indispensable : sans
+    // lui Netlify sert index.html (qui existe a la racine) et ignore la regle.
+    // /api/* et les autres chemins ne sont pas touches (matche la racine exacte).
+    writeFileSync("_redirects", "/    /splits.html    200!\n");
     console.log("Build: site Splits — racine reecrite vers /splits.html");
   } else {
     try { rmSync("_redirects"); } catch {}
