@@ -180,6 +180,21 @@
   .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;
     animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
   @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- Vue graphique ---------- */
+  #graphview{display:flex;flex-direction:column;height:100%;overflow:hidden}
+  .gbar{flex:0 0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
+  .gbar .gtype{display:flex;gap:6px}
+  .gbar .lbl{font-size:12px;font-weight:700;color:var(--muted)}
+  .gchart{flex:1 1 auto;min-height:0;position:relative}
+  .gchart svg{display:block;width:100%;height:100%}
+  .glegend{flex:0 0 auto;max-height:32%;overflow:auto;display:flex;flex-wrap:wrap;gap:6px;
+    padding:8px 12px;border-top:1px solid var(--line)}
+  .lchip{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:7px;
+    padding:4px 9px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted)}
+  .lchip .sw{width:16px;height:3px;border-radius:2px;background:#c4ccd5;flex:0 0 auto}
+  .lchip.on{color:var(--ink);border-color:var(--ac);background:var(--hl)}
+  .lchip .p{color:var(--muted);font-weight:800}
 </style>
 </head>
 <body>
@@ -208,6 +223,7 @@
         <label>Catégorie</label>
         <select id="catsel"></select>
       </div>
+      <button class="ghost" id="graphBtn" style="display:none">Graphique</button>
       <button class="ghost" id="cmpBtn" style="display:none">Comparer les épinglés</button>
       <div style="color:var(--muted);font-size:12px;font-weight:600" id="pinhint">Clique un coureur pour l'épingler en bas.</div>
     </div>
@@ -234,11 +250,13 @@
 <script>
 /* ============================ état & utils ============================ */
 const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
 const PROXY = "/api/ws";
 const LS_EVENTS = "splits.savedEvents.v1";
 const pinned = new Set();        // ids de coureurs épinglés (par index)
 let compareMode = false;         // comparaison entre coureurs épinglés
 let current = null;              // modèle affiché {title, source, categories?, ...}
+let graphMode = false, graphType = "leader", graphSel = null, _graphModel = null;  // vue graphique
 
 const toast = (m,ms=2200)=>{const t=$("#toast");t.innerHTML=m;t.classList.add("show");clearTimeout(toast._);toast._=setTimeout(()=>t.classList.remove("show"),ms);};
 
@@ -462,9 +480,12 @@ function rkText(r){ return r===1?"r1":r===2?"r2":r===3?"r3":""; }
 
 function render(model){
   current=Object.assign(current||{},{model});
+  // nouveau modèle (autre catégorie/évènement) -> réinitialise la vue graphique
+  if(model!==_graphModel){ _graphModel=model; graphSel=null; graphMode=false; }
   if(model.category) $("#evtitle").innerHTML=(model.title||"")+' <small>'+(model.category||"")+'</small>';
   const legs=model.legs, runners=model.runners;
   const wrap=$("#wrap");
+  const gb=$("#graphBtn"); if(gb){ gb.style.display=runners.length?"":"none"; gb.textContent="Graphique"; }
   if(!runners.length){wrap.innerHTML='<div id="empty">Aucun coureur.</div>';return;}
 
   // bouton comparateur : visible dès 2 coureurs épinglés
@@ -552,6 +573,100 @@ function initials(name){
   const w=(name||"").trim().split(/\s+/).filter(Boolean);
   if(!w.length) return "?";
   return (w.length===1?w[0].slice(0,2):w[0][0]+w[w.length-1][0]).toUpperCase();
+}
+
+/* ============================ vue graphique (leader / superman) ============================ */
+const GPAL=["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#0aa6a0","#9a6324","#c71585","#1f78b4","#808000"];
+const GDASH=["","7 4","2 4","9 3 2 3"];
+const gStyle=i=>({stroke:GPAL[i%GPAL.length], dash:GDASH[Math.floor(i/GPAL.length)%GDASH.length]});
+function gNiceStep(max){ for(const s of [15,30,60,120,180,300,600,900]) if(max/s<=8) return s; return 1800; }
+
+function toggleGraph(){
+  graphMode=!graphMode;
+  $("#graphBtn").textContent=graphMode?"Tableau":"Graphique";
+  if(graphMode) renderGraph(); else render(current.model);
+}
+function renderGraph(){
+  const model=current&&current.model; if(!model||!model.runners.length) return;
+  const legs=model.legs, runners=model.runners, N=legs.length;
+  $("#cmpBtn").style.display="none";
+  if(!graphSel) graphSel=new Set(runners.map((_,i)=>i).slice(0,6));   // 6 premiers par défaut
+  // références par poste : meilleur cumul (leader) et cumul des meilleurs splits (superman)
+  const leaderCum=[], superCum=[]; let acc=0;
+  for(let k=0;k<N;k++){
+    let mc=Infinity, ms=Infinity;
+    runners.forEach(r=>{const d=r.legs[k]; if(d){ if(d._cum!=null)mc=Math.min(mc,d._cum); if(d._split!=null)ms=Math.min(ms,d._split);}});
+    leaderCum[k]=isFinite(mc)?mc:null; acc+=isFinite(ms)?ms:0; superCum[k]=acc;
+  }
+  const behind=(r,k)=>{const d=r.legs[k]; if(!d||d._cum==null)return null;
+    const ref=graphType==="leader"?leaderCum[k]:superCum[k]; return ref==null?null:d._cum-ref;};
+  // structure
+  $("#wrap").innerHTML=`<div id="graphview">
+    <div class="gbar">
+      <span class="lbl">Graphique :</span>
+      <div class="gtype">
+        <button class="ghost gt" data-t="leader">Derrière le leader</button>
+        <button class="ghost gt" data-t="superman">Superman</button>
+      </div>
+      <span class="lbl" style="margin-left:auto">Clique un coureur pour l'afficher / le retirer</span>
+    </div>
+    <div class="gchart" id="gchart"></div>
+    <div class="glegend" id="glegend"></div>
+  </div>`;
+  $$(".gt").forEach(b=>{ b.classList.toggle("on",b.dataset.t===graphType);
+    b.onclick=()=>{ graphType=b.dataset.t; renderGraph(); }; });
+  // légende : tous les coureurs, cliquables ; pastille couleur si affichés
+  const leg=$("#glegend"); leg.innerHTML="";
+  const order=[...graphSel].sort((a,b)=>a-b);                 // couleur stable par rang d'ajout
+  runners.forEach((r,i)=>{
+    const on=graphSel.has(i), st=on?gStyle(order.indexOf(i)):null;
+    const c=document.createElement("div"); c.className="lchip"+(on?" on":"");
+    c.innerHTML=`<span class="sw"></span><span class="p">${esc(r.pos||"")}</span><span>${esc(r.name)}</span>`;
+    if(st){const sw=c.querySelector(".sw"); sw.style.background=st.stroke; if(st.dash) sw.style.opacity=.85;}
+    c.onclick=()=>{ graphSel.has(i)?graphSel.delete(i):graphSel.add(i); renderGraph(); };
+    leg.appendChild(c);
+  });
+  // tracé SVG (mesuré sur le conteneur)
+  const box=$("#gchart"), W=Math.max(360,box.clientWidth), H=Math.max(220,box.clientHeight);
+  box.innerHTML=buildGraphSvg(W,H,legs,runners,behind);
+}
+function buildGraphSvg(W,H,legs,runners,behind){
+  const N=legs.length, L=50,R=16,Tp=24,B=20, pw=W-L-R, ph=H-Tp-B;
+  const xLabels=["S"].concat(legs.map(l=>l.no));
+  const x=k=>L+pw*(k/N);
+  // échelle Y (0 en haut -> max en bas)
+  let max=1; const sel=[...graphSel].sort((a,b)=>a-b);
+  sel.forEach(i=>{for(let k=0;k<N;k++){const v=behind(runners[i],k); if(v!=null&&v>max)max=v;}});
+  const step=gNiceStep(max), top=Math.ceil(max/step)*step||step;
+  const y=v=>Tp+ph*(v/top);
+  const E=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  let s=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" font-family="Nunito,system-ui,sans-serif">`;
+  // grille horizontale + labels temps
+  for(let v=0;v<=top+1;v+=step){
+    const yy=y(v).toFixed(1);
+    s+=`<line x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}" stroke="#dde4ec" stroke-width="1"/>`;
+    s+=`<text x="${L-6}" y="${(+yy+3).toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" fill="#6b7886">+${fmtSec(v)}</text>`;
+  }
+  // grille verticale + numéros de poste (en haut)
+  for(let k=0;k<=N;k++){
+    const xx=x(k).toFixed(1);
+    s+=`<line x1="${xx}" y1="${Tp}" x2="${xx}" y2="${H-B}" stroke="#eef1f5" stroke-width="1"/>`;
+    s+=`<text x="${xx}" y="${Tp-7}" text-anchor="middle" font-size="11" font-weight="800" fill="#1d2733">${E(xLabels[k]||"")}</text>`;
+  }
+  // ligne de référence (leader / superman) à 0, en rouge
+  s+=`<line x1="${L}" y1="${y(0).toFixed(1)}" x2="${W-R}" y2="${y(0).toFixed(1)}" stroke="#e6194b" stroke-width="2"/>`;
+  // une polyligne par coureur sélectionné (départ S à 0, puis chaque poste)
+  sel.forEach((i,idx)=>{
+    const st=gStyle(idx);
+    let d=`M${x(0).toFixed(1)} ${y(0).toFixed(1)} `, started=true, any=false;
+    for(let k=0;k<N;k++){ const v=behind(runners[i],k);
+      if(v==null){started=false;continue;}
+      d+=(started?"L":"M")+x(k+1).toFixed(1)+" "+y(v).toFixed(1)+" "; started=true; any=true;
+    }
+    if(any) s+=`<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:""} stroke-linejoin="round"/>`;
+  });
+  s+=`</svg>`;
+  return s;
 }
 
 /* ============================ ouverture évènement importé ============================ */
@@ -735,6 +850,7 @@ async function handleFile(f){
 
 /* ============================ démarrage ============================ */
 $("#cmpBtn").onclick=()=>{ compareMode=!compareMode; if(current&&current.model) render(current.model); };
+$("#graphBtn").onclick=()=>{ if(current&&current.model) toggleGraph(); };
 $("#sideToggle").onclick=()=>$("#side").classList.toggle("hidden");
 $("#date").value=todayISO();
 $("#search").onclick=()=>$("#date").value&&searchEvents($("#date").value);
