@@ -80,8 +80,9 @@
   .evhint{color:var(--muted);font-size:13px;padding:8px}
 
   /* ---------- Sous-barre catégorie ---------- */
-  #subbar{flex:0 0 auto;display:none;gap:12px;align-items:center;flex-wrap:wrap;
+  #subbar{flex:0 0 auto;display:none;gap:12px;align-items:flex-end;flex-wrap:wrap;
     padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  #subbar .title{margin-bottom:1px}
   #subbar.show{display:flex}
   #subbar .title{font-weight:800;font-size:15px}
   #subbar .title small{color:var(--muted);font-weight:600;margin-left:6px}
@@ -162,6 +163,9 @@
     td.cname .tot b{color:var(--ink)}
     th.cname,td.cname{min-width:56px;max-width:104px;padding:7px 7px}
     th.leg,td.leg{min-width:60px;padding:7px 5px}
+    /* graphique : légende empilée au-dessus du graphe */
+    .gbody{flex-direction:column}
+    .glegend{flex:0 0 auto;max-width:none;max-height:34%;border-right:0;border-bottom:1px solid var(--line)}
   }
 
   /* import */
@@ -186,15 +190,17 @@
   .gbar{flex:0 0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
   .gbar .gtype{display:flex;gap:6px}
   .gbar .lbl{font-size:12px;font-weight:700;color:var(--muted)}
-  .gchart{flex:1 1 auto;min-height:0;position:relative}
+  .gbody{flex:1 1 auto;min-height:0;display:flex;overflow:hidden}
+  .glegend{flex:0 0 230px;max-width:42%;overflow:auto;display:flex;flex-direction:column;gap:5px;
+    padding:8px;border-right:1px solid var(--line)}
+  .gchart{flex:1 1 auto;min-width:0;position:relative}
   .gchart svg{display:block;width:100%;height:100%}
-  .glegend{flex:0 0 auto;max-height:32%;overflow:auto;display:flex;flex-wrap:wrap;gap:6px;
-    padding:8px 12px;border-top:1px solid var(--line)}
   .lchip{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:7px;
-    padding:4px 9px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted)}
+    padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted);white-space:nowrap;overflow:hidden}
   .lchip .sw{width:16px;height:3px;border-radius:2px;background:#c4ccd5;flex:0 0 auto}
   .lchip.on{color:var(--ink);border-color:var(--ac);background:var(--hl)}
-  .lchip .p{color:var(--muted);font-weight:800}
+  .lchip .p{color:var(--muted);font-weight:800;flex:0 0 auto;min-width:20px;text-align:right}
+  .lchip .nm2{overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -591,16 +597,20 @@ function renderGraph(){
   const legs=model.legs, runners=model.runners, N=legs.length;
   $("#cmpBtn").style.display="none";
   if(!graphSel) graphSel=new Set(runners.map((_,i)=>i).slice(0,6));   // 6 premiers par défaut
-  // références par poste : meilleur cumul (leader) et cumul des meilleurs splits (superman)
+  const sel=[...graphSel].sort((a,b)=>a-b);
+  // Références par poste :
+  //  - leader   : meilleur cumul parmi les coureurs AFFICHÉS (=> toujours un point en haut)
+  //  - superman : cumul des meilleurs splits de TOUT le monde (idéal à 0, implicite)
   const leaderCum=[], superCum=[]; let acc=0;
   for(let k=0;k<N;k++){
-    let mc=Infinity, ms=Infinity;
-    runners.forEach(r=>{const d=r.legs[k]; if(d){ if(d._cum!=null)mc=Math.min(mc,d._cum); if(d._split!=null)ms=Math.min(ms,d._split);}});
-    leaderCum[k]=isFinite(mc)?mc:null; acc+=isFinite(ms)?ms:0; superCum[k]=acc;
+    let mc=Infinity; sel.forEach(i=>{const d=runners[i].legs[k]; if(d&&d._cum!=null)mc=Math.min(mc,d._cum);});
+    leaderCum[k]=isFinite(mc)?mc:null;
+    let ms=Infinity; runners.forEach(r=>{const d=r.legs[k]; if(d&&d._split!=null)ms=Math.min(ms,d._split);});
+    acc+=isFinite(ms)?ms:0; superCum[k]=acc;
   }
   const behind=(r,k)=>{const d=r.legs[k]; if(!d||d._cum==null)return null;
     const ref=graphType==="leader"?leaderCum[k]:superCum[k]; return ref==null?null:d._cum-ref;};
-  // structure
+  // structure : légende À GAUCHE, graphe à droite
   $("#wrap").innerHTML=`<div id="graphview">
     <div class="gbar">
       <span class="lbl">Graphique :</span>
@@ -608,21 +618,21 @@ function renderGraph(){
         <button class="ghost gt" data-t="leader">Derrière le leader</button>
         <button class="ghost gt" data-t="superman">Superman</button>
       </div>
-      <span class="lbl" style="margin-left:auto">Clique un coureur pour l'afficher / le retirer</span>
     </div>
-    <div class="gchart" id="gchart"></div>
-    <div class="glegend" id="glegend"></div>
+    <div class="gbody">
+      <div class="glegend" id="glegend"></div>
+      <div class="gchart" id="gchart"></div>
+    </div>
   </div>`;
   $$(".gt").forEach(b=>{ b.classList.toggle("on",b.dataset.t===graphType);
     b.onclick=()=>{ graphType=b.dataset.t; renderGraph(); }; });
-  // légende : tous les coureurs, cliquables ; pastille couleur si affichés
+  // légende (ordre du classement) : tous les coureurs, cliquables ; pastille couleur si affichés
   const leg=$("#glegend"); leg.innerHTML="";
-  const order=[...graphSel].sort((a,b)=>a-b);                 // couleur stable par rang d'ajout
   runners.forEach((r,i)=>{
-    const on=graphSel.has(i), st=on?gStyle(order.indexOf(i)):null;
+    const on=graphSel.has(i), st=on?gStyle(sel.indexOf(i)):null;
     const c=document.createElement("div"); c.className="lchip"+(on?" on":"");
-    c.innerHTML=`<span class="sw"></span><span class="p">${esc(r.pos||"")}</span><span>${esc(r.name)}</span>`;
-    if(st){const sw=c.querySelector(".sw"); sw.style.background=st.stroke; if(st.dash) sw.style.opacity=.85;}
+    c.innerHTML=`<span class="sw"></span><span class="p">${esc(r.pos||"")}</span><span class="nm2">${esc(r.name)}</span>`;
+    if(st) c.querySelector(".sw").style.background=st.stroke;
     c.onclick=()=>{ graphSel.has(i)?graphSel.delete(i):graphSel.add(i); renderGraph(); };
     leg.appendChild(c);
   });
@@ -653,8 +663,8 @@ function buildGraphSvg(W,H,legs,runners,behind){
     s+=`<line x1="${xx}" y1="${Tp}" x2="${xx}" y2="${H-B}" stroke="#eef1f5" stroke-width="1"/>`;
     s+=`<text x="${xx}" y="${Tp-7}" text-anchor="middle" font-size="11" font-weight="800" fill="#1d2733">${E(xLabels[k]||"")}</text>`;
   }
-  // ligne de référence (leader / superman) à 0, en rouge
-  s+=`<line x1="${L}" y1="${y(0).toFixed(1)}" x2="${W-R}" y2="${y(0).toFixed(1)}" stroke="#e6194b" stroke-width="2"/>`;
+  // pas de ligne de référence rouge : le "0" est porté par les coureurs eux-mêmes
+  // (leader = meilleur des affichés) ou est l'idéal implicite (superman).
   // une polyligne par coureur sélectionné (départ S à 0, puis chaque poste)
   sel.forEach((i,idx)=>{
     const st=gStyle(idx);
