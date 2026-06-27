@@ -25,20 +25,23 @@
   }
   a{color:var(--ac);text-decoration:none}
 
-  /* ---------- Barre du haut ---------- */
-  header{
-    flex:0 0 auto; background:var(--panel); border-bottom:1px solid var(--line);
-    padding:10px 14px; display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap;
-    z-index:30;
+  /* ---------- Mise en page : panneau gauche + zone principale ---------- */
+  #layout{display:flex;flex:1 1 auto;min-height:0;overflow:hidden}
+  #side{
+    flex:0 0 20%; max-width:20%; min-width:215px;
+    background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; gap:12px; padding:12px; overflow:auto; z-index:30;
   }
+  #side.hidden{display:none}
+  #main{flex:1 1 auto; display:flex; flex-direction:column; min-width:0; overflow:hidden}
+
   .brand{font-weight:800;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:8px;white-space:nowrap}
   .brand b{color:var(--ac)}
-  .controls{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;flex:1}
-  .field{display:flex;flex-direction:column;gap:4px}
+  .field{display:flex;flex-direction:column;gap:5px}
   .field label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   input[type=date],select,input[type=text]{
     font:inherit;font-weight:600;padding:7px 10px;border:1px solid var(--line);
-    border-radius:9px;background:#fff;color:var(--ink);min-width:150px;
+    border-radius:9px;background:#fff;color:var(--ink);min-width:120px;
   }
   button{
     font:inherit;font-weight:700;cursor:pointer;border:0;border-radius:9px;
@@ -47,37 +50,44 @@
   button.ghost{background:#eef3f8;color:var(--ink);border:1px solid var(--line)}
   button:active{transform:translateY(1px)}
   button:disabled{opacity:.5;cursor:default}
+  #side input[type=date]{width:100%;min-width:0}
+  #side #search,#side #importBtn{width:100%}
+  #catsel{min-width:150px}
 
-  .saved{display:flex;flex-direction:column;gap:5px;min-width:230px;max-width:340px}
+  .saved{display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-height:0}
   .saved .head{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-  .savedlist{display:flex;flex-direction:column;gap:4px;max-height:88px;overflow:auto}
+  .savedlist{display:flex;flex-direction:column;gap:6px;overflow:auto;flex:1 1 auto}
   .chip{
     display:flex;align-items:center;gap:8px;background:#f2f6fb;border:1px solid var(--line);
-    border-radius:8px;padding:5px 8px;font-size:13px;font-weight:600;cursor:pointer;
+    border-radius:8px;padding:7px 9px;font-size:13px;font-weight:600;cursor:pointer;
   }
   .chip:hover{background:var(--hl)}
   .chip.on{border-color:var(--ac);background:var(--hl)}
-  .chip .x{margin-left:auto;color:var(--muted);font-weight:800;padding:0 3px;border-radius:5px}
+  .chip .dt{color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap}
+  .chip .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip .exp,.chip .x{color:var(--muted);font-weight:800;padding:0 3px;border-radius:5px}
+  .chip .exp:hover{color:var(--ac);background:#fff}
   .chip .x:hover{color:#e23;background:#fff}
-  .chip .dt{color:var(--muted);font-size:11px;font-weight:700}
 
-  /* ---------- Liste d'évènements du jour ---------- */
-  #events{flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
-    max-height:34vh;overflow:auto;padding:6px 14px;display:none}
+  /* ---------- Résultats de recherche d'évènements ---------- */
+  #events{background:#fff;border:1px solid var(--line);border-radius:10px;
+    max-height:42vh;overflow:auto;padding:4px;display:none}
   #events.show{display:block}
-  .evrow{display:flex;gap:12px;align-items:center;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:14px}
+  .evrow{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px}
   .evrow:hover{background:var(--hl)}
-  .evrow .nm{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .evrow .meta{color:var(--muted);font-size:12px;white-space:nowrap}
-  .evrow .cnt{font-weight:800;color:var(--ac);min-width:34px;text-align:right}
+  .evrow .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .evrow .meta{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .evhint{color:var(--muted);font-size:13px;padding:8px}
 
   /* ---------- Sous-barre catégorie ---------- */
-  #subbar{flex:0 0 auto;display:none;gap:14px;align-items:center;flex-wrap:wrap;
+  #subbar{flex:0 0 auto;display:none;gap:12px;align-items:center;flex-wrap:wrap;
     padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
   #subbar.show{display:flex}
   #subbar .title{font-weight:800;font-size:15px}
   #subbar .title small{color:var(--muted);font-weight:600;margin-left:6px}
+  .iconbtn{padding:6px 10px;font-size:16px;line-height:1}
+  /* contenu mobile-only des cellules figées (masqué sur ordi) */
+  .ini,.tot{display:none}
 
   /* ---------- Tableau des splits ---------- */
   #wrap{flex:1 1 auto;overflow:auto;position:relative}
@@ -139,6 +149,21 @@
   /* mode comparaison actif */
   button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 
+  /* ---------- Mobile : affichage compact (n'affecte PAS l'ordi) ---------- */
+  @media (max-width:640px){
+    #layout{flex-direction:column}
+    #side{flex:0 0 auto;max-width:none;width:100%;max-height:60vh;
+      border-right:0;border-bottom:1px solid var(--line)}
+    /* colonne gauche compacte : initiales + temps total (avec +ecart) ;
+       pas de nom complet ni de club ; volet droit (nom+total) supprime */
+    th.crt,td.crt{display:none}
+    .full,.club{display:none}
+    .ini,.tot{display:inline}
+    td.cname .tot b{color:var(--ink)}
+    th.cname,td.cname{min-width:56px;max-width:104px;padding:7px 7px}
+    th.leg,td.leg{min-width:60px;padding:7px 5px}
+  }
+
   /* import */
   #imp{display:none;position:fixed;inset:0;background:rgba(20,28,38,.45);z-index:50;align-items:center;justify-content:center}
   #imp.show{display:flex}
@@ -159,48 +184,45 @@
 </head>
 <body>
 
-<header>
-  <div class="brand">⏱ <b>Splits</b></div>
-  <div class="controls">
+<div id="layout">
+  <aside id="side">
+    <div class="brand"><b>Splits</b></div>
     <div class="field">
       <label>Date de la course</label>
-      <div style="display:flex;gap:6px">
-        <input type="date" id="date" />
-        <button id="search">Chercher</button>
-      </div>
+      <input type="date" id="date" />
+      <button id="search">Chercher</button>
     </div>
+    <button class="ghost" id="importBtn">Importer PDF / XML</button>
+    <div id="events"></div>
     <div class="saved">
       <div class="head">Mes évènements</div>
       <div class="savedlist" id="savedlist"><div class="evhint" style="padding:2px">Aucun pour l'instant.</div></div>
     </div>
-    <div class="field">
-      <label>Import</label>
-      <button class="ghost" id="importBtn">Importer PDF / XML</button>
+  </aside>
+
+  <div id="main">
+    <div id="subbar">
+      <button class="ghost iconbtn" id="sideToggle" title="Afficher / masquer mes évènements">☰</button>
+      <div class="title" id="evtitle"></div>
+      <div class="field" style="gap:2px">
+        <label>Catégorie</label>
+        <select id="catsel"></select>
+      </div>
+      <button class="ghost" id="cmpBtn" style="display:none">Comparer les épinglés</button>
+      <div style="color:var(--muted);font-size:12px;font-weight:600" id="pinhint">Clique un coureur pour l'épingler en bas.</div>
+    </div>
+
+    <div id="wrap">
+      <div id="empty">Choisis une date puis un évènement — ou importe un fichier de splits.<br>Tout est enregistré dans « Mes évènements ».</div>
     </div>
   </div>
-</header>
-
-<div id="events"></div>
-
-<div id="subbar">
-  <div class="title" id="evtitle"></div>
-  <div class="field" style="gap:2px">
-    <label>Catégorie</label>
-    <select id="catsel"></select>
-  </div>
-  <button class="ghost" id="cmpBtn" style="display:none">Comparer les épinglés</button>
-  <div style="color:var(--muted);font-size:12px;font-weight:600" id="pinhint">Clique un coureur pour l'épingler en bas.</div>
-</div>
-
-<div id="wrap">
-  <div id="empty">Choisis une date puis un évènement — ou importe un fichier de splits.<br>Tout est enregistré dans « Mes évènements ».</div>
 </div>
 
 <!-- modale import -->
 <div id="imp">
   <div class="modal">
     <h3>Importer des splits</h3>
-    <p>Dépose un fichier <b>XML</b> (IOF 3.0, depuis Eventor/MeOS…) ou un <b>PDF</b> de temps intermédiaires (lignes de 6 postes, plusieurs lignes par coureur).</p>
+    <p>Dépose un fichier <b>XML</b> (IOF 2.0.3 ou 3.0, depuis Eventor/MeOS/WinSplits…) ou un <b>PDF</b> de temps intermédiaires (lignes de 6 postes, plusieurs lignes par coureur).</p>
     <div class="drop" id="drop">Clique ou dépose un fichier ici<br><small>.xml · .pdf</small></div>
     <input type="file" id="file" accept=".xml,.pdf" hidden />
     <div class="row"><button class="ghost" id="impClose">Fermer</button></div>
@@ -261,11 +283,10 @@ async function searchEvents(iso){
     box.innerHTML="";
     evs.forEach(ev=>{
       const r=document.createElement("div");r.className="evrow";
-      r.innerHTML=`<span class="nm"></span><span class="meta"></span><span class="cnt"></span>`;
+      r.innerHTML=`<span class="nm"></span><span class="meta"></span>`;
       r.querySelector(".nm").textContent=ev.name;
-      r.querySelector(".meta").textContent=[ev.club,ev.country].filter(Boolean).join(" · ");
-      r.querySelector(".cnt").textContent=ev.runners?ev.runners+"👤":"";
-      r.onclick=()=>{ saveEvent(ev); openEvent(ev); box.classList.remove("show"); };
+      r.querySelector(".meta").textContent=[ev.club,ev.country,ev.runners?ev.runners+" coureurs":""].filter(Boolean).join(" · ");
+      r.onclick=()=>{ openEvent(ev); box.classList.remove("show"); };
       box.appendChild(r);
     });
   }catch(e){ box.innerHTML='<div class="evhint">Erreur : '+e.message+'. (Le proxy /api/ws doit tourner — lance <code>python server.py</code> en local.)</div>'; }
@@ -289,14 +310,22 @@ function renderSaved(){
   box.innerHTML="";
   a.forEach(ev=>{
     const c=document.createElement("div");c.className="chip"+(current && (current._key===ev.id)?" on":"");
-    c.innerHTML=`<span class="dt"></span><span class="lbl" style="overflow:hidden;text-overflow:ellipsis"></span><span class="x" title="retirer">✕</span>`;
+    const expBtn=ev.kind==="file"?"":`<span class="exp" title="Copier le lien d'export">🔗</span>`;
+    c.innerHTML=`<span class="dt"></span><span class="lbl"></span>${expBtn}<span class="x" title="retirer">✕</span>`;
     c.querySelector(".dt").textContent=ev.kind==="file"?"📄":(ev.date?ev.date.slice(0,5):"");
     c.querySelector(".lbl").textContent=ev.name;
-    c.querySelector(".lbl").onclick=()=> ev.kind==="file"?openFileEvent(ev):openEvent(ev);
-    c.onclick=(e)=>{ if(e.target.classList.contains("x"))return; ev.kind==="file"?openFileEvent(ev):openEvent(ev); };
+    c.onclick=(e)=>{ if(e.target.closest(".x,.exp"))return; ev.kind==="file"?openFileEvent(ev):openEvent(ev); };
+    const exp=c.querySelector(".exp"); if(exp) exp.onclick=(e)=>{e.stopPropagation();exportEvent(ev);};
     c.querySelector(".x").onclick=(e)=>{e.stopPropagation();writeSaved(loadSaved().filter(x=>x.id!==ev.id));};
     box.appendChild(c);
   });
+}
+// lien d'export : URL qui rouvre l'evenement live (?ev=id)
+function exportEvent(ev){
+  const url=location.origin+location.pathname+"?ev="+encodeURIComponent(ev.id);
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(()=>toast("Lien d'export copié"),()=>prompt("Lien d'export :",url));
+  else prompt("Lien d'export :",url);
 }
 
 /* ============================ ouverture évènement live ============================ */
@@ -314,13 +343,24 @@ function pickDefaultCat(cats){
   return bi;
 }
 async function openEvent(ev){
-  pinned.clear(); $("#events").classList.remove("show");
+  pinned.clear(); $("#events").classList.remove("show"); $("#side").classList.add("hidden");
   $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Chargement des catégories…</div>';
   $("#subbar").classList.add("show");
-  $("#evtitle").innerHTML=ev.name+' <small>'+(ev.date||"")+'</small>';
+  $("#evtitle").innerHTML=esc(ev.name||"Évènement "+ev.id)+' <small>'+(ev.date||"")+'</small>';
   try{
     const html=await fetchHtml({op:"classes",id:ev.id});
     const doc=parseDoc(html);
+    // titre/date depuis l'en-tete de la page classes : "Nom, Organisateur [jj/mm/aaaa]"
+    // on prend la cellule LA PLUS COURTE contenant la date (les <td> conteneurs
+    // englobent toute la table -> sinon on capte tout le texte).
+    let info=""; doc.querySelectorAll("td").forEach(td=>{const t=cellText(td);
+      if(/\[\d{2}\/\d{2}\/\d{4}\]/.test(t) && (!info || t.length<info.length)) info=t;});
+    const dm=info.match(/\[(\d{2}\/\d{2}\/\d{4})\]/);
+    const name=ev.name||info.replace(/\s*\[\d{2}\/\d{2}\/\d{4}\].*$/,"").trim()||("Évènement "+ev.id);
+    const date=ev.date||(dm?dm[1]:"");
+    ev.name=name; ev.date=date;                 // pour la sauvegarde (lien d'export)
+    saveEvent(ev);
+    $("#evtitle").innerHTML=esc(name)+' <small>'+(date||"")+'</small>';
     const cats=[];
     // table classes : triplets [nom (lien) | nb coureurs | nb postes] (plusieurs par ligne)
     doc.querySelectorAll('a[href*="categoryId="]').forEach(a=>{
@@ -330,7 +370,7 @@ async function openEvent(ev){
       const cCtrl=td && td.nextElementSibling && td.nextElementSibling.nextElementSibling;
       cats.push({cat:m[1], name:nm, controls:parseInt(cellText(cCtrl||{}),10)||0});
     });
-    current={_key:ev.id, source:"live", id:ev.id, title:ev.name, date:ev.date, cats};
+    current={_key:ev.id, source:"live", id:ev.id, title:name, date, cats};
     const defIdx=pickDefaultCat(cats);
     const sel=$("#catsel"); sel.innerHTML="";
     cats.forEach((c,i)=>{const o=document.createElement("option");o.value=c.cat;o.textContent=c.name;if(i===defIdx)o.selected=true;sel.appendChild(o);});
@@ -477,8 +517,8 @@ function render(model){
     return `<tr data-i="${idx}" class="${pinned.has(idx)&&!foot?"sel":""}">
       <td class="cpos">${rr.pos||""}</td>
       <td class="cname" style="left:36px">
-        <div class="n">${esc(rr.name)}</div>
-        <div class="sub">${esc(rr.club||"")}</div>
+        <div class="n"><span class="full">${esc(rr.name)}</span><span class="ini">${esc(initials(rr.name))}</span></div>
+        <div class="sub"><span class="club">${esc(rr.club||"")}</span><span class="tot"><b>${esc(rr.finish||"")}</b>${rr.diff?" "+esc(rr.diff):""}</span></div>
       </td>
       ${cells}
       <td class="crt">
@@ -507,10 +547,16 @@ function render(model){
   });
 }
 function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+// initiales (mobile) : 1re lettre du 1er + du dernier mot ("David von Koch" -> "DK")
+function initials(name){
+  const w=(name||"").trim().split(/\s+/).filter(Boolean);
+  if(!w.length) return "?";
+  return (w.length===1?w[0].slice(0,2):w[0][0]+w[w.length-1][0]).toUpperCase();
+}
 
 /* ============================ ouverture évènement importé ============================ */
 function openFileEvent(ev){
-  pinned.clear(); $("#events").classList.remove("show");
+  pinned.clear(); $("#events").classList.remove("show"); $("#side").classList.add("hidden");
   const data=ev.payload;
   current={_key:ev.id, source:"file", title:data.title, date:data.date, cats:data.categories.map((c,i)=>({cat:i,name:c.category}))};
   $("#subbar").classList.add("show");
@@ -522,33 +568,50 @@ function openFileEvent(ev){
   const m=data.categories[0]; render(Object.assign({title:data.title},m));
 }
 
-/* ============================ import XML (IOF 3.0) ============================ */
+/* ============================ import XML (IOF 2.0.3 ET 3.0) ============================
+   Deux schémas gérés :
+   - IOF 3.0 : Class>Name, Person>Name>Given/Family, Organisation>Name, Result>Time
+     (secondes), Position, SplitTime>Time (secondes, cumulé).
+   - IOF 2.0.3 : ClassShortName, Person>PersonName>Given/Family, Club>Name,
+     Result>Time>Clock (HH:MM:SS), ResultPosition, SplitTime>Time (HH:MM:SS, cumulé).
+   On lit les temps via xmlTime (gère "HH:MM:SS"/"MM:SS" ET les secondes brutes).      */
+function xmlTime(str){
+  str=(str||"").trim(); if(!str) return null;
+  if(str.includes(":")){ const p=str.split(":").map(Number); if(p.some(isNaN)) return null; return p.reduce((a,n)=>a*60+n,0); }
+  const n=parseFloat(str); return isNaN(n)?null:Math.round(n);
+}
 function parseIofXml(text){
-  const doc=new DOMParser().parseFromString(text,"application/xml");
-  if(doc.querySelector("parsererror")) throw new Error("XML illisible");
+  // XML strict d'abord ; en cas d'erreur (ex. balise non fermée fréquente dans
+  // les exports Eventor — <Nationality> non close), repli sur le parseur HTML
+  // tolérant (sélecteurs insensibles à la casse, donc PascalCase OK).
+  let doc=new DOMParser().parseFromString(text,"application/xml");
+  if(doc.querySelector("parsererror")) doc=new DOMParser().parseFromString(text,"text/html");
   const T=(el,sel)=>{const e=el&&el.querySelector(sel);return e?e.textContent.trim():"";};
-  const evName=T(doc,"ResultList > Event > Name")||T(doc,"Event > Name")||"Import XML";
+  // temps sous un élément <X> : utilise <Clock> s'il existe (v2), sinon le texte (v3)
+  const timeUnder=(el,sel)=>{const e=el&&el.querySelector(sel);if(!e)return null;const c=e.querySelector("Clock");return xmlTime((c||e).textContent);};
+  const evName=T(doc,"Event > Name")||"Import XML";
   const date=(T(doc,"Event Date")||"").slice(0,10);
   const categories=[];
   doc.querySelectorAll("ClassResult").forEach(cr=>{
-    const cname=T(cr,"Class > Name")||T(cr,"Class > ShortName")||"Catégorie";
+    const cname=T(cr,"Class > Name")||T(cr,"Class > ShortName")||T(cr,"ClassShortName")||T(cr,"ClassLongName")||"Catégorie";
     // ordre des postes : on prend la liste de codes la plus longue parmi les coureurs
     let order=[];
-    cr.querySelectorAll("PersonResult > Result").forEach(res=>{
-      const codes=[...res.querySelectorAll("SplitTime")].map(s=>T(s,"ControlCode"));
+    cr.querySelectorAll("Result").forEach(res=>{
+      const codes=[...res.querySelectorAll("SplitTime")].map(s=>T(s,"ControlCode")).filter(Boolean);
       if(codes.length>order.length) order=codes;
     });
     const legs=order.map((c,i)=>({label:(i===0?"S":order[i-1])+"-"+c, no:String(i+1), code:c}))
       .concat([{label:order.length?order[order.length-1]+"-F":"F", no:"F", code:""}]);
     const runners=[];
     cr.querySelectorAll("PersonResult").forEach(pr=>{
-      const given=T(pr,"Person Name Given"), family=T(pr,"Person Name Family");
-      const name=(given+" "+family).trim()||T(pr,"Person Name")||"?";
-      const club=T(pr,"Organisation Name")||T(pr,"Organisation ShortName")||"";
+      const given=T(pr,"Person Given"), family=T(pr,"Person Family");
+      const name=(given+" "+family).trim()||T(pr,"PersonName")||T(pr,"Person Name")||"?";
+      const club=T(pr,"Club > Name")||T(pr,"Organisation > Name")||T(pr,"Organisation > ShortName")||"";
       const res=pr.querySelector("Result"); if(!res) return;
-      const total=+T(res,"Time")||null;
-      const pos=T(res,"Position")||"";
-      const map={}; res.querySelectorAll("SplitTime").forEach(s=>{map[T(s,"ControlCode")]=+T(s,"Time")||null;});
+      const st=res.querySelector("CompetitorStatus")?.getAttribute("value")||"";
+      const total=(st&&st!=="OK"&&st!=="Finished")?null:timeUnder(res,"Time");
+      const pos=T(res,"ResultPosition")||T(res,"Position")||"";
+      const map={}; res.querySelectorAll("SplitTime").forEach(s=>{const cc=T(s,"ControlCode"); if(cc) map[cc]=timeUnder(s,"Time");});
       // temps cumulés -> on construit splits/cumuls
       const cums=order.map(c=>map[c]); cums.push(total);
       const legData=[]; let prev=0;
@@ -559,8 +622,7 @@ function parseIofXml(text){
       }
       runners.push({pos,name,club,finish:fmtSec(total),_total:total,diff:"",legs:legData});
     });
-    rankAndDiff(runners,legs);
-    categories.push({category:cname,legs,runners});
+    if(runners.length){ rankAndDiff(runners,legs); categories.push({category:cname,legs,runners}); }
   });
   if(!categories.length) throw new Error("Aucun ClassResult dans le XML");
   return {title:evName,date,categories,source:"file"};
@@ -673,10 +735,14 @@ async function handleFile(f){
 
 /* ============================ démarrage ============================ */
 $("#cmpBtn").onclick=()=>{ compareMode=!compareMode; if(current&&current.model) render(current.model); };
+$("#sideToggle").onclick=()=>$("#side").classList.toggle("hidden");
 $("#date").value=todayISO();
 $("#search").onclick=()=>$("#date").value&&searchEvents($("#date").value);
 $("#date").onchange=()=>$("#date").value&&searchEvents($("#date").value);
 renderSaved();
+// lien d'export : ?ev=<databaseId> ouvre directement l'évènement live
+const _ev=new URLSearchParams(location.search).get("ev");
+if(_ev) openEvent({id:_ev,name:"",date:""});
 </script>
 </body>
 </html>
