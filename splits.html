@@ -135,7 +135,6 @@
   td.leg .split{font-size:14px;font-weight:600;line-height:1.3}
   td.leg .cum{font-size:13px;font-weight:600;color:var(--muted);line-height:1.3}
   td.leg .rk{font-size:9px;font-weight:700;vertical-align:super;margin-left:2px}
-  td.leg [title]{cursor:help}
   /* rangs des SPLITS : pastille colorée (fond) pour les distinguer */
   .r1{color:var(--g1t)} .r1.bg{background:var(--g1)}
   .r2{color:var(--g2t)} .r2.bg{background:var(--g2)}
@@ -144,9 +143,16 @@
   /* rangs des TOTAUX : seulement la couleur du texte (jaune / gris / rouge) */
   td.leg .cum.r1{color:#c08a00} td.leg .cum.r2{color:#67737f} td.leg .cum.r3{color:#e23b2e}
 
-  /* coureurs épinglés */
-  tfoot td{position:sticky;bottom:0;z-index:7;background:#fff8ee;border-top:2px solid var(--ac2)}
-  tfoot tr td.cpos,tfoot tr td.cname,tfoot tr td.crt{z-index:9;background:#fff8ee}
+  /* coureurs épinglés : panneau séparé en bas, toujours visible, scroll
+     horizontal synchronisé avec le tableau (le sticky tfoot ne tient pas
+     une table haute) */
+  #pinbar{flex:0 0 auto;max-height:42%;overflow-x:auto;overflow-y:hidden;
+    background:#fff8ee;border-top:2px solid var(--ac2);display:none}
+  #pinbar.show{display:block}
+  #pinbar::-webkit-scrollbar{display:none}
+  #pinbar{scrollbar-width:none}
+  #pinbar td{border-bottom:1px solid #f0e6d4}
+  #pinbar td.cpos,#pinbar td.cname,#pinbar td.crt{background:#fff8ee}
   /* mode comparaison actif */
   button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 
@@ -195,8 +201,9 @@
     padding:8px;border-right:1px solid var(--line)}
   .gchart{flex:1 1 auto;min-width:0;position:relative}
   .gchart svg{display:block;width:100%;height:100%}
-  .lchip{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:7px;
-    padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted);white-space:nowrap;overflow:hidden}
+  .lchip{flex:0 0 auto;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;
+    padding:13px 10px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted);white-space:nowrap;overflow:hidden}
+  .lchip .tt{margin-left:auto;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
   .lchip .sw{width:16px;height:3px;border-radius:2px;background:#c4ccd5;flex:0 0 auto}
   .lchip.on{color:var(--ink);border-color:var(--ac);background:var(--hl)}
   .lchip .p{color:var(--muted);font-weight:800;flex:0 0 auto;min-width:20px;text-align:right}
@@ -237,6 +244,7 @@
     <div id="wrap">
       <div id="empty">Choisis une date puis un évènement — ou importe un fichier de splits.<br>Tout est enregistré dans « Mes évènements ».</div>
     </div>
+    <div id="pinbar"></div>
   </div>
 </div>
 
@@ -556,22 +564,24 @@ function render(model){
   };
 
   const body="<tbody>"+runners.map((r,i)=>rowHtml(r,i)).join("")+"</tbody>";
-  const footRows=[...pinned].sort((a,b)=>a-b).map(i=>rowHtml(runners[i],i,true)).join("");
-  const foot=footRows?`<tfoot>${footRows}</tfoot>`:"";
+  wrap.innerHTML=`<table>${head}${body}</table>`;
 
-  wrap.innerHTML=`<table>${head}${body}${foot}</table>`;
-  // empile TOUTES les lignes épinglées en bas : chaque ligne est décalée du
-  // cumul des hauteurs des lignes en dessous (sinon elles se superposent à bottom:0).
-  const footTrs=[...wrap.querySelectorAll("tfoot tr")];
-  let off=0;
-  for(let j=footTrs.length-1;j>=0;j--){
-    footTrs[j].querySelectorAll("td").forEach(td=>td.style.bottom=off+"px");
-    off+=footTrs[j].getBoundingClientRect().height;
-  }
-  // clic sur une ligne (corps OU pied) = épingler / désépingler
-  wrap.querySelectorAll("tbody tr,tfoot tr").forEach(tr=>tr.onclick=()=>{
-    const i=+tr.dataset.i; pinned.has(i)?pinned.delete(i):pinned.add(i); render(model);
-  });
+  // panneau des épinglés : table séparée sous le tableau (toujours visible),
+  // colonnes calées sur les largeurs mesurées de l'en-tête + scroll horizontal synchronisé.
+  const pinbar=$("#pinbar");
+  const pinIdx=[...pinned].sort((a,b)=>a-b).filter(i=>i<runners.length);
+  if(pinIdx.length){
+    const cols=[...wrap.querySelectorAll("thead th")].map(th=>th.getBoundingClientRect().width);
+    const colgroup="<colgroup>"+cols.map(w=>`<col style="width:${w.toFixed(1)}px">`).join("")+"</colgroup>";
+    pinbar.innerHTML=`<table style="table-layout:fixed">${colgroup}<tbody>${pinIdx.map(i=>rowHtml(runners[i],i,true)).join("")}</tbody></table>`;
+    pinbar.classList.add("show"); pinbar.scrollLeft=wrap.scrollLeft;
+  } else { pinbar.classList.remove("show"); pinbar.innerHTML=""; }
+
+  // clic sur une ligne (tableau OU panneau du bas) = épingler / désépingler
+  const toggle=i=>{ pinned.has(i)?pinned.delete(i):pinned.add(i); render(model); };
+  wrap.querySelectorAll("tbody tr").forEach(tr=>tr.onclick=()=>toggle(+tr.dataset.i));
+  pinbar.querySelectorAll("tbody tr").forEach(tr=>tr.onclick=()=>toggle(+tr.dataset.i));
+  wrap.onscroll=()=>{ if(pinbar.classList.contains("show")) pinbar.scrollLeft=wrap.scrollLeft; };
 }
 function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 // initiales (mobile) : 1re lettre du 1er + du dernier mot ("David von Koch" -> "DK")
@@ -595,7 +605,7 @@ function toggleGraph(){
 function renderGraph(){
   const model=current&&current.model; if(!model||!model.runners.length) return;
   const legs=model.legs, runners=model.runners, N=legs.length;
-  $("#cmpBtn").style.display="none";
+  $("#cmpBtn").style.display="none"; $("#pinbar").classList.remove("show");
   if(!graphSel) graphSel=new Set(runners.map((_,i)=>i).slice(0,6));   // 6 premiers par défaut
   const sel=[...graphSel].sort((a,b)=>a-b);
   // Références par poste :
@@ -631,7 +641,7 @@ function renderGraph(){
   runners.forEach((r,i)=>{
     const on=graphSel.has(i), st=on?gStyle(sel.indexOf(i)):null;
     const c=document.createElement("div"); c.className="lchip"+(on?" on":"");
-    c.innerHTML=`<span class="sw"></span><span class="p">${esc(r.pos||"")}</span><span class="nm2">${esc(r.name)}</span>`;
+    c.innerHTML=`<span class="sw"></span><span class="p">${esc(r.pos||"")}</span><span class="nm2">${esc(r.name)}</span><span class="tt">${esc(r.finish||"")}</span>`;
     if(st) c.querySelector(".sw").style.background=st.stroke;
     c.onclick=()=>{ graphSel.has(i)?graphSel.delete(i):graphSel.add(i); renderGraph(); };
     leg.appendChild(c);
@@ -666,14 +676,18 @@ function buildGraphSvg(W,H,legs,runners,behind){
   // pas de ligne de référence rouge : le "0" est porté par les coureurs eux-mêmes
   // (leader = meilleur des affichés) ou est l'idéal implicite (superman).
   // une polyligne par coureur sélectionné (départ S à 0, puis chaque poste)
+  // + pastilles de survol (nom + écart au 0) à chaque sommet
   sel.forEach((i,idx)=>{
-    const st=gStyle(idx);
-    let d=`M${x(0).toFixed(1)} ${y(0).toFixed(1)} `, started=true, any=false;
+    const st=gStyle(idx), nm=E(runners[i].name);
+    let d=`M${x(0).toFixed(1)} ${y(0).toFixed(1)} `, started=true, any=false, dots="";
+    dots+=`<circle cx="${x(0).toFixed(1)}" cy="${y(0).toFixed(1)}" r="7" fill="transparent"><title>${nm}  +${fmtSec(0)}</title></circle>`;
     for(let k=0;k<N;k++){ const v=behind(runners[i],k);
       if(v==null){started=false;continue;}
-      d+=(started?"L":"M")+x(k+1).toFixed(1)+" "+y(v).toFixed(1)+" "; started=true; any=true;
+      const px=x(k+1).toFixed(1), py=y(v).toFixed(1);
+      d+=(started?"L":"M")+px+" "+py+" "; started=true; any=true;
+      dots+=`<circle cx="${px}" cy="${py}" r="2.4" fill="${st.stroke}"/><circle cx="${px}" cy="${py}" r="7" fill="transparent"><title>${nm}  +${fmtSec(v)}</title></circle>`;
     }
-    if(any) s+=`<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:""} stroke-linejoin="round"/>`;
+    if(any) s+=`<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:""} stroke-linejoin="round"><title>${nm}</title></path>`+dots;
   });
   s+=`</svg>`;
   return s;
