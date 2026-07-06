@@ -142,6 +142,9 @@
   td.leg .split.r1,td.leg .split.r2,td.leg .split.r3{border-radius:6px;padding:1px 3px}
   /* rangs des TOTAUX : seulement la couleur du texte (jaune / gris / rouge) */
   td.leg .cum.r1{color:#c08a00} td.leg .cum.r2{color:#67737f} td.leg .cum.r3{color:#e23b2e}
+  /* erreur : tronçon >20% au-dessus du niveau moyen du coureur (rouge-violet) */
+  td.leg .split.err{border-radius:6px;padding:1px 3px;background:#f4d3e6;color:#9c1257;
+    box-shadow:inset 0 0 0 1.5px #c0267a}
 
   /* coureurs épinglés : panneau séparé en bas, toujours visible, scroll
      horizontal synchronisé avec le tableau (le sticky tfoot ne tient pas
@@ -463,22 +466,26 @@ function parseLiveTable(html){
   const hasFinDiff=rows.slice(0,hIdx+1).some(r=>r.some(c=>/finish\s*time/i.test(c)));
   const metaA=2+(hasFinDiff?2:0);              // pos,nom[,finish,diff]
   const isRank=c=>/^\(\d+\)$/.test(c||"");     // cellule de rang isolée
-  // ne garde que les valeurs de temps (retire les cellules de rang intercalées)
-  const vals=(arr)=>arr.filter(c=>!isRank(c)).map(dotToSec);
+  // Layout B = rangs intercalés (split,(rang),split,(rang)…) -> on prend une cellule
+  // sur deux ; Layout A = une cellule par tronçon. On garde les POSITIONS (une
+  // cellule vide de poste manqué reste alignée, sinon les tronçons se décalent).
+  const hasRanks=rows.some(r=>r.some(isRank));
+  const pick=(arr)=>(hasRanks?arr.filter((_,j)=>j%2===0):arr).slice(0,legs.length).map(dotToSec);
   const runners=[];
   for(let i=hIdx+1;i<rows.length;i++){
     const a=rows[i];
     // ligne coureur A : le nom est répété en première et dernière cellule
     if(!(a.length>3 && a[1] && a[1]===a[a.length-1])) continue;
     const b=rows[i+1]||[]; i++;               // consomme la ligne des cumuls
-    const splits=vals(a.slice(metaA,-1));     // temps de tronçon
-    const cums=vals(b.slice(1,-1));           // temps cumulés
-    // total fiable = colonne Finish si présente, sinon dernier cumul
-    const total=hasFinDiff?dotToSec(a[2]):(cums.length?cums[cums.length-1]:null);
+    const splits=pick(a.slice(metaA,-1));     // temps de tronçon
+    const cums=pick(b.slice(1,-1));           // temps cumulés
     const legData=legs.map((_,k)=>({
       _split:splits[k]??null, _cum:cums[k]??null,
       split:fmtSec(splits[k]), cum:fmtSec(cums[k]), srank:null, crank:null,
     }));
+    // total fiable = colonne Finish si présente, sinon dernier cumul
+    let total=hasFinDiff?dotToSec(a[2]):(cums.length?cums[cums.length-1]:null);
+    if(invalidateAfterMiss(legData)) total=null;   // poste manqué -> total/cumul non classés
     runners.push({pos:a[0]||"", name:a[1], club:b[0]||"", finish:fmtSec(total), _total:total??null, diff:"", legs:legData});
   }
   // WinSplits trie déjà (position officielle, mispunch en bas) : on garde
@@ -528,6 +535,14 @@ function render(model){
   const all=calc(runners.map((_,i)=>i));
   const sub=compare?calc([...pinned]):null;
   const gap=(v,best)=>(v!=null&&best!=null&&v>best)?("+"+fmtSec(v-best)):"";  // "" si meilleur → pas d'infobulle
+  // Détection d'erreur : ratio du coureur sur un tronçon (temps / meilleur temps)
+  // > 1,2 × son ratio médian (son "niveau moyen") -> il a perdu >20% de son niveau.
+  const ERR=1.2;
+  const avgRatio=runners.map(rr=>{
+    const rs=[]; for(let k=0;k<legs.length;k++){const d=rr.legs[k]; if(d&&d._split!=null&&all.bS[k]>0) rs.push(d._split/all.bS[k]);}
+    if(!rs.length) return null; rs.sort((a,b)=>a-b); return rs[Math.floor(rs.length/2)];
+  });
+  const isErr=(d,k,i)=> d._split!=null && all.bS[k]>0 && avgRatio[i] && (d._split/all.bS[k])>ERR*avgRatio[i];
 
   const head=`<thead><tr>
     <th class="cpos">#</th>
@@ -544,8 +559,9 @@ function render(model){
       const sr=useSub?(sub.rS[k][idx]||null):d.srank;  // rang servant à colorer
       const cr=useSub?(sub.rC[k][idx]||null):d.crank;
       const gs=gap(d._split,ref.bS[k]), gc=gap(d._cum,ref.bC[k]);
+      const err=isErr(d,k,idx)?" err":"";
       return `<td class="leg">
-        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}"${gs?` title="${gs}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
+        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${err}"${gs?` title="${gs}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
         <div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>
       </td>`;
     }).join("");
@@ -759,7 +775,8 @@ function parseIofXml(text){
         legData.push({split:fmtSec(split), cum:fmtSec(cum), _split:split, _cum:cum, srank:null, crank:null});
         if(cum!=null) prev=cum;
       }
-      runners.push({pos,name,club,finish:fmtSec(total),_total:total,diff:"",legs:legData});
+      const tot=invalidateAfterMiss(legData)?null:total;   // poste manqué -> cumul/total non classés
+      runners.push({pos,name,club,finish:fmtSec(tot),_total:tot,diff:"",legs:legData});
     });
     if(runners.length){ rankAndDiff(runners,legs); categories.push({category:cname,legs,runners}); }
   });
@@ -767,6 +784,16 @@ function parseIofXml(text){
   return {title:evName,date,categories,source:"file"};
 }
 
+// Poste manqué : un coureur qui n'a pas poinçonné un poste (split vide) a un
+// cumul faussé (raccourci) à partir de ce poste -> on retire son cumul du
+// CLASSEMENT depuis ce poste (l'affichage du temps reste, mais sans rang ni
+// prise en compte comme leader). Ses interpostes réalisés restent classés.
+function invalidateAfterMiss(legData){
+  const k0=legData.findIndex(d=>d._split==null);
+  if(k0<0) return false;
+  for(let k=k0;k<legData.length;k++) legData[k]._cum=null;
+  return true;
+}
 // rangs par tronçon (split & cumul) — sans toucher à l'ordre ni aux positions
 function computeLegRanks(runners,legs){
   for(let k=0;k<legs.length;k++){
