@@ -200,14 +200,14 @@
   .gbar .gtype{display:flex;gap:6px}
   .gbar .lbl{font-size:12px;font-weight:700;color:var(--muted)}
   .gbody{flex:1 1 auto;min-height:0;display:flex;overflow:hidden}
-  .glegend{flex:0 0 230px;max-width:42%;overflow:auto;display:flex;flex-direction:column;gap:5px;
+  .glegend{flex:0 0 276px;max-width:46%;overflow:auto;display:flex;flex-direction:column;gap:5px;
     padding:8px;border-right:1px solid var(--line)}
   .gchart{flex:1 1 auto;min-width:0;position:relative}
   .gchart svg{display:block;width:100%;height:100%}
   .lchip{flex:0 0 auto;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;
     padding:13px 10px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted);white-space:nowrap;overflow:hidden}
   .lchip .tt{margin-left:auto;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
-  .lchip .sw{width:16px;height:3px;border-radius:2px;background:#c4ccd5;flex:0 0 auto}
+  .lchip .sw{width:10px;height:10px;border-radius:50%;background:#c4ccd5;flex:0 0 auto}
   .lchip.on{color:var(--ink);border-color:var(--ac);background:var(--hl)}
   .lchip .p{color:var(--muted);font-weight:800;flex:0 0 auto;min-width:20px;text-align:right}
   .lchip .nm2{overflow:hidden;text-overflow:ellipsis}
@@ -559,9 +559,12 @@ function render(model){
       const sr=useSub?(sub.rS[k][idx]||null):d.srank;  // rang servant à colorer
       const cr=useSub?(sub.rC[k][idx]||null):d.crank;
       const gs=gap(d._split,ref.bS[k]), gc=gap(d._cum,ref.bC[k]);
-      const err=isErr(d,k,idx)?" err":"";
+      const isE=isErr(d,k,idx);
+      // survol : écart au split ; si erreur, ajoute le temps perdu vs le niveau moyen
+      let ttl=gs;
+      if(isE){ const lost=Math.round(d._split-avgRatio[idx]*all.bS[k]); if(lost>0) ttl=(gs?gs+"\n":"")+"Perte ~+"+fmtSec(lost); }
       return `<td class="leg">
-        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${err}"${gs?` title="${gs}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
+        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${isE?" err":""}"${ttl?` title="${ttl}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
         <div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>
       </td>`;
     }).join("");
@@ -667,9 +670,16 @@ function renderGraph(){
   box.innerHTML=buildGraphSvg(W,H,legs,runners,behind);
 }
 function buildGraphSvg(W,H,legs,runners,behind){
-  const N=legs.length, L=50,R=16,Tp=24,B=20, pw=W-L-R, ph=H-Tp-B;
+  const N=legs.length, L=50,R=40,Tp=24,B=20, pw=W-L-R, ph=H-Tp-B;   // R = colonne initiales
   const xLabels=["S"].concat(legs.map(l=>l.no));
-  const x=k=>L+pw*(k/N);
+  // largeur de chaque tronçon PROPORTIONNELLE à son meilleur temps (split le plus rapide)
+  const bestSplit=[]; for(let k=0;k<N;k++){let m=Infinity;runners.forEach(r=>{const d=r.legs[k];if(d&&d._split!=null)m=Math.min(m,d._split);});bestSplit[k]=isFinite(m)?m:null;}
+  const known=bestSplit.filter(v=>v!=null); const avgW=known.length?known.reduce((a,b)=>a+b,0)/known.length:1;
+  const legW=bestSplit.map(v=>v!=null?v:avgW);
+  const cum=[0]; for(let k=0;k<N;k++) cum[k+1]=cum[k]+legW[k];
+  const totW=cum[N]||1;
+  const x=k=>L+pw*(cum[k]/totW);
+  const xEnd=x(N);
   // échelle Y (0 en haut -> max en bas)
   let max=1; const sel=[...graphSel].sort((a,b)=>a-b);
   sel.forEach(i=>{for(let k=0;k<N;k++){const v=behind(runners[i],k); if(v!=null&&v>max)max=v;}});
@@ -680,30 +690,32 @@ function buildGraphSvg(W,H,legs,runners,behind){
   // grille horizontale + labels temps
   for(let v=0;v<=top+1;v+=step){
     const yy=y(v).toFixed(1);
-    s+=`<line x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}" stroke="#dde4ec" stroke-width="1"/>`;
+    s+=`<line x1="${L}" y1="${yy}" x2="${xEnd.toFixed(1)}" y2="${yy}" stroke="#dde4ec" stroke-width="1"/>`;
     s+=`<text x="${L-6}" y="${(+yy+3).toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" fill="#6b7886">+${fmtSec(v)}</text>`;
   }
-  // grille verticale + numéros de poste (en haut)
+  // grille verticale (proportionnelle) + numéros de poste (en haut)
   for(let k=0;k<=N;k++){
     const xx=x(k).toFixed(1);
     s+=`<line x1="${xx}" y1="${Tp}" x2="${xx}" y2="${H-B}" stroke="#eef1f5" stroke-width="1"/>`;
     s+=`<text x="${xx}" y="${Tp-7}" text-anchor="middle" font-size="11" font-weight="800" fill="#1d2733">${E(xLabels[k]||"")}</text>`;
   }
-  // pas de ligne de référence rouge : le "0" est porté par les coureurs eux-mêmes
-  // (leader = meilleur des affichés) ou est l'idéal implicite (superman).
-  // une polyligne par coureur sélectionné (départ S à 0, puis chaque poste)
-  // + pastilles de survol (nom + écart au 0) à chaque sommet
+  // pas de ligne de référence rouge : le "0" est porté par les coureurs eux-mêmes.
+  // une polyligne par coureur (départ S à 0, puis chaque poste) + pastilles de survol
+  // + initiales de la couleur du coureur en bout de ligne (après le F), à droite.
   sel.forEach((i,idx)=>{
     const st=gStyle(idx), nm=E(runners[i].name);
-    let d=`M${x(0).toFixed(1)} ${y(0).toFixed(1)} `, started=true, any=false, dots="";
+    let d=`M${x(0).toFixed(1)} ${y(0).toFixed(1)} `, started=true, any=false, dots="", lastPy=y(0);
     dots+=`<circle cx="${x(0).toFixed(1)}" cy="${y(0).toFixed(1)}" r="7" fill="transparent"><title>${nm}  +${fmtSec(0)}</title></circle>`;
     for(let k=0;k<N;k++){ const v=behind(runners[i],k);
       if(v==null){started=false;continue;}
-      const px=x(k+1).toFixed(1), py=y(v).toFixed(1);
-      d+=(started?"L":"M")+px+" "+py+" "; started=true; any=true;
-      dots+=`<circle cx="${px}" cy="${py}" r="2.4" fill="${st.stroke}"/><circle cx="${px}" cy="${py}" r="7" fill="transparent"><title>${nm}  +${fmtSec(v)}</title></circle>`;
+      const px=x(k+1).toFixed(1), py=y(v); lastPy=py;
+      d+=(started?"L":"M")+px+" "+py.toFixed(1)+" "; started=true; any=true;
+      dots+=`<circle cx="${px}" cy="${py.toFixed(1)}" r="2.4" fill="${st.stroke}"/><circle cx="${px}" cy="${py.toFixed(1)}" r="7" fill="transparent"><title>${nm}  +${fmtSec(v)}</title></circle>`;
     }
-    if(any) s+=`<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:""} stroke-linejoin="round"><title>${nm}</title></path>`+dots;
+    if(any){
+      s+=`<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:""} stroke-linejoin="round"><title>${nm}</title></path>`+dots;
+      s+=`<text x="${(xEnd+4).toFixed(1)}" y="${(lastPy+3.5).toFixed(1)}" font-size="11" font-weight="800" fill="${st.stroke}">${E(initials(runners[i].name))}</text>`;
+    }
   });
   s+=`</svg>`;
   return s;
