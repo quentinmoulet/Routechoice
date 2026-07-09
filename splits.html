@@ -535,14 +535,31 @@ function render(model){
   const all=calc(runners.map((_,i)=>i));
   const sub=compare?calc([...pinned]):null;
   const gap=(v,best)=>(v!=null&&best!=null&&v>best)?("+"+fmtSec(v-best)):"";  // "" si meilleur → pas d'infobulle
-  // Détection d'erreur : ratio du coureur sur un tronçon (temps / meilleur temps)
-  // > 1,2 × son ratio médian (son "niveau moyen") -> il a perdu >20% de son niveau.
-  const ERR=1.2;
-  const avgRatio=runners.map(rr=>{
-    const rs=[]; for(let k=0;k<legs.length;k++){const d=rr.legs[k]; if(d&&d._split!=null&&all.bS[k]>0) rs.push(d._split/all.bS[k]);}
-    if(!rs.length) return null; rs.sort((a,b)=>a-b); return rs[Math.floor(rs.length/2)];
+  // Détection d'erreur (méthode WinSplits Pro) : indice de perf sur un tronçon =
+  // moyenne des 25% meilleurs temps du tronçon / temps du coureur ; niveau normal =
+  // médiane PONDÉRÉE (par la longueur du tronçon) de ses indices ; erreur si l'écart
+  // au temps attendu (= moy25% / niveau) dépasse À LA FOIS un seuil de temps ET de %.
+  const ERR_PCT=10, ERR_SEC=6;
+  const fastAvg=legs.map((_,k)=>{
+    const ss=runners.map(r=>r.legs[k]&&r.legs[k]._split).filter(v=>v!=null).sort((a,b)=>a-b);
+    if(!ss.length) return null;
+    const n=Math.max(1,Math.ceil(ss.length*0.25));
+    return ss.slice(0,n).reduce((a,b)=>a+b,0)/n;
   });
-  const isErr=(d,k,i)=> d._split!=null && all.bS[k]>0 && avgRatio[i] && (d._split/all.bS[k])>ERR*avgRatio[i];
+  const perfLevel=runners.map(rr=>{
+    const it=[];
+    for(let k=0;k<legs.length;k++){const d=rr.legs[k]; if(d&&d._split>0&&fastAvg[k]) it.push([fastAvg[k]/d._split, fastAvg[k]]);}
+    if(!it.length) return null;
+    it.sort((a,b)=>a[0]-b[0]);
+    const half=it.reduce((s,x)=>s+x[1],0)/2; let acc=0;
+    for(const x of it){ acc+=x[1]; if(acc>=half) return x[0]; }
+    return it[it.length-1][0];
+  });
+  const errInfo=(d,k,i)=>{
+    if(!(d&&d._split!=null&&fastAvg[k]&&perfLevel[i])) return null;
+    const exp=fastAvg[k]/perfLevel[i], dt=d._split-exp;
+    return (dt>ERR_SEC && dt/exp*100>ERR_PCT)?{lost:Math.round(dt)}:null;
+  };
 
   const head=`<thead><tr>
     <th class="cpos">#</th>
@@ -559,10 +576,10 @@ function render(model){
       const sr=useSub?(sub.rS[k][idx]||null):d.srank;  // rang servant à colorer
       const cr=useSub?(sub.rC[k][idx]||null):d.crank;
       const gs=gap(d._split,ref.bS[k]), gc=gap(d._cum,ref.bC[k]);
-      const isE=isErr(d,k,idx);
-      // survol : écart au split ; si erreur, ajoute le temps perdu vs le niveau moyen
+      const e=errInfo(d,k,idx), isE=!!e;
+      // survol : écart au split ; si erreur, ajoute le temps perdu (méthode WinSplits Pro)
       let ttl=gs;
-      if(isE){ const lost=Math.round(d._split-avgRatio[idx]*all.bS[k]); if(lost>0) ttl=(gs?gs+"\n":"")+"Perte ~+"+fmtSec(lost); }
+      if(isE) ttl=(gs?gs+"\n":"")+"Perte ~+"+fmtSec(e.lost);
       return `<td class="leg">
         <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${isE?" err":""}"${ttl?` title="${ttl}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
         <div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>
