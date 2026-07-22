@@ -262,6 +262,7 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
   <button class="bigbtn p" id="btn-grid" onclick="doAnalysis()" disabled>Analyser la carte</button>
   <button class="bigbtn" id="btn-overlay" onclick="cycleOverlay()">Calque : off</button>
   <button class="bigbtn" id="btn-gradient" onclick="toggleGradient()">Couleurs des choix : distinctes</button>
+  <button class="bigbtn" id="btn-overprint" onclick="toggleOverprint()" style="display:none">Barrières / zones interdites : oui</button>
   <div class="cl">
     <div class="cli"><div class="clsq" style="background:#ff3b3b"></div>Infranchissable</div>
     <div class="cli"><div class="clsq" style="background:#39e65a"></div>Franchissable</div>
@@ -382,6 +383,7 @@ let brushStrokes=[], _lastBrush=null;          // historique pinceau (pour le pa
 let eventClassId=null, pendingBrush=null;      // partage : id de classe Livelox / pinceau à rejouer
 let courseMode=false, coursePts=[], selPt=-1;  // tracé manuel du parcours
 let traceMode=false;                           // traçage temps réel (choix recalculés en direct)
+let overprintCvs=null, overprintOn=true, pendingOverprint=null; // surimpression Livelox (barrières/zones interdites, taille carte)
 let _courseDrag=false,_courseDownPos=null,_courseMoved=0,_touch=null,_md=null;
 const COLORS=['#5b8cff','#ff6b6b','#4ade80','#fbbf24','#a78bfa','#fb923c','#22d3ee','#f472b6'];
 
@@ -707,6 +709,7 @@ function parseWorldFile(text){
   return true;
 }
 function loadImageFile(f){
+  pendingOverprint=null;overprintCvs=null;updateOverprintBtn();   // image locale → pas de surimpression Livelox
   loadImage(URL.createObjectURL(f),f.name);
   $('i-img').textContent=f.name;
 }
@@ -792,9 +795,54 @@ function loadImage(src,name,after){
     resize();updateLegUI();focusLeg();promptImageDrop(false);
     log(`Image chargée : ${im.width}×${im.height}`,'ok');stat('image prête');
     if(after)after();
+    if(pendingOverprint)buildOverprint();          // barrières/zones interdites Livelox
   };
   im.onerror=()=>log('Erreur de chargement image (CORS si URL distante). Dépose le fichier image.','er');
   im.src=src;
+}
+
+// ─── Surimpression Livelox (barrières infranchissables / zones interdites) ───────
+// Le parcours Livelox fournit un SVG OCAD de surimpression (courseImage). On en
+// extrait UNIQUEMENT les symboles « on ne passe pas » — 708 (barrière/limite
+// infranchissable), 709 (zone interdite/dangereuse), 714 (hors-limite) — remplis en
+// plein, rendus à la taille de la carte (le SVG en mm couvre exactement la carte).
+// Sert à la fois à l'AFFICHAGE (violet translucide) et au MASQUE d'obstacles.
+const OVERPRINT_BLOCK=[708,709,714];
+async function buildOverprint(){
+  const po=pendingOverprint;if(!po||!po.url||!srcImg)return;
+  try{
+    const r=await fetch('/api/image?url='+encodeURIComponent(po.url));if(!r.ok)return;
+    const txt=await r.text();
+    if(txt.indexOf('<svg')<0)return;               // certains parcours = PNG → ignoré
+    const doc=new DOMParser().parseFromString(txt,'image/svg+xml');
+    if(doc.querySelector('parsererror'))return;
+    const svg=doc.documentElement;
+    svg.querySelectorAll('g[id^="Sym_"]').forEach(g=>{const n=+((g.id.match(/Sym_(\d+)/)||[])[1]);if(OVERPRINT_BLOCK.indexOf(n)<0)g.remove();});
+    if(!svg.querySelector('path')){overprintCvs=null;updateOverprintBtn();return;} // aucune barrière/zone
+    svg.querySelectorAll('[fill^="url("]').forEach(e=>e.removeAttribute('fill')); // hachures → plein
+    const W=srcImg.width,H=srcImg.height;
+    svg.setAttribute('width',W);svg.setAttribute('height',H);
+    svg.setAttribute('style','fill:rgb(200,30,140);stroke:rgb(200,30,140);fill-rule:evenodd');
+    const str=new XMLSerializer().serializeToString(svg);
+    const dataUrl='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(str)));
+    await new Promise(res=>{const img=new Image();
+      img.onload=()=>{const cv=document.createElement('canvas');cv.width=W;cv.height=H;cv.getContext('2d').drawImage(img,0,0,W,H);overprintCvs=cv;res();};
+      img.onerror=()=>res();img.src=dataUrl;});
+    updateOverprintBtn();
+    if(grid&&overprintOn){grid=buildGrid(+$('p-thin').value,+$('p-close').value,+$('p-clear').value);} // ré-intègre si déjà analysé
+    render();
+    log('Surimpression Livelox : barrières / zones interdites importées.','ok');
+  }catch(e){}
+}
+function toggleOverprint(){
+  overprintOn=!overprintOn;updateOverprintBtn();
+  if(grid)grid=buildGrid(+$('p-thin').value,+$('p-close').value,+$('p-clear').value);
+  render();
+}
+function updateOverprintBtn(){
+  const b=$('btn-overprint');if(!b)return;
+  b.style.display=overprintCvs?'':'none';
+  b.textContent='Barrières / zones interdites : '+(overprintOn?'oui':'non');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -821,6 +869,10 @@ function parseLivelox(d){
   $('src-tag').textContent='1:'+(d.map.mapScale||'?');
   // postes du premier parcours
   const course=d.courses[0];
+  // surimpression (SVG OCAD : barrières / zones interdites) — chargée après l'image
+  overprintCvs=null;
+  const cimg=course&&course.courseImages&&course.courseImages[0];
+  pendingOverprint=(cimg&&cimg.url)?{url:cimg.url}:null;updateOverprintBtn();
   controls=[];
   if(course&&course.controls){
     for(const cc of course.controls){
@@ -928,6 +980,10 @@ async function tryLoadShare(){
     if(st.classId){
       const cb=await (await fetch('/api/classblob?classId='+st.classId)).json();
       const iu=(cb.map.images&&cb.map.images[0].url)||cb.map.url;
+      // surimpression (barrières/zones interdites) rechargée avec la carte
+      overprintCvs=null;
+      const cimg=cb.courses&&cb.courses[0]&&cb.courses[0].courseImages&&cb.courses[0].courseImages[0];
+      pendingOverprint=(cimg&&cimg.url)?{url:cimg.url}:null;
       const b=await (await fetch('/api/image?url='+encodeURIComponent(iu))).blob();
       loadImage(URL.createObjectURL(b),'partage',()=>restore(cb));
     }else if(st.img){loadImage(st.img,'partage',restore);}
@@ -1251,6 +1307,13 @@ function buildGrid(openR,closeR,clearR){
   //  d. anti-bruit : amas isolés < ~(1,2 m)²
   removeSmallComponents(m,W,H,Math.max(8,Math.round((1.2/gridMpp)**2)));
   const blocked=m;
+  // e. surimpression Livelox (barrières/zones interdites) → bloqué en dur
+  if(overprintCvs&&overprintOn){
+    const oc=document.createElement('canvas');oc.width=W;oc.height=H;
+    const ox=oc.getContext('2d',{willReadFrequently:true});ox.drawImage(overprintCvs,0,0,W,H);
+    const od=ox.getImageData(0,0,W,H).data;
+    for(let i=0;i<n;i++)if(od[(i<<2)+3]>40)blocked[i]=1;
+  }
   // masque "clearance" pour le pathfinding (marge de sécurité optionnelle)
   const blockedClear=clearR>0?dilateBox(blocked,W,H,clearR):blocked;
   return {W,H,blocked,blockedClear};
@@ -1811,6 +1874,7 @@ function render(){
   ctx.save();ctx.translate(panX,panY);ctx.rotate(viewRot);ctx.scale(zoom,zoom);
   ctx.imageSmoothingEnabled=zoom<1;
   ctx.drawImage(srcCvs,0,0);
+  if(overprintCvs&&overprintOn){ctx.globalAlpha=0.5;ctx.drawImage(overprintCvs,0,0);ctx.globalAlpha=1;} // barrières/zones Livelox
   if(overlayMode>=1&&overlayCvs){
     ctx.imageSmoothingEnabled=false;
     ctx.drawImage(overlayCvs,0,0,grid.W,grid.H,0,0,srcImg.width,srcImg.height);
