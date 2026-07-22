@@ -262,7 +262,7 @@ input[type=text],input[type=number]{width:100%;padding:11px;background:var(--bg)
   <button class="bigbtn p" id="btn-grid" onclick="doAnalysis()" disabled>Analyser la carte</button>
   <button class="bigbtn" id="btn-overlay" onclick="cycleOverlay()">Calque : off</button>
   <button class="bigbtn" id="btn-gradient" onclick="toggleGradient()">Couleurs des choix : distinctes</button>
-  <button class="bigbtn" id="btn-overprint" onclick="toggleOverprint()" style="display:none">Barrières / zones interdites : oui</button>
+  <button class="bigbtn" id="btn-overprint" onclick="toggleOverprint()" style="display:none">Zones interdites / barrières : oui</button>
   <div class="cl">
     <div class="cli"><div class="clsq" style="background:#ff3b3b"></div>Infranchissable</div>
     <div class="cli"><div class="clsq" style="background:#39e65a"></div>Franchissable</div>
@@ -849,8 +849,8 @@ function toggleOverprint(){
 }
 function updateOverprintBtn(){
   const b=$('btn-overprint');if(!b)return;
-  b.style.display=overprintCvs?'':'none';
-  b.textContent='Barrières / zones interdites : '+(overprintOn?'oui':'non');
+  b.style.display=(overprintCvs||grid)?'':'none';   // surimpression Livelox OU détection raster
+  b.textContent='Zones interdites / barrières : '+(overprintOn?'oui':'non');
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1193,6 +1193,39 @@ function dilateBox(src,W,H,r){
 function opening(src,W,H,r){return dilateBox(erodeBox(src,W,H,r),W,H,r);}
 // fermeture = dilatation puis érosion (bouche les petits trous/fentes)
 function closing(src,W,H,r){return erodeBox(dilateBox(src,W,H,r),W,H,r);}
+// Détecte les ZONES violettes interdites (hachurées OU pleines) sur une carte raster,
+// SANS abaisser le seuil d'épaisseur (qui prendrait traits/cercles du parcours). Idée :
+// densité de violet par BLOCS + ouverture 2D. Le réseau du parcours (cercles + traits
+// de liaison) forme des bandes FINES (1 bloc de large) → éliminées par l'ouverture ;
+// une vraie zone hachurée/pleine est un pavé 2D → conservée puis remplie.
+function detectHatchZones(violet,W,H,pxMm){
+  const bs=Math.max(8,Math.min(40,Math.round(1.2*pxMm)));   // bloc ~1,2 mm
+  const BW=Math.ceil(W/bs),BH=Math.ceil(H/bs),BA=bs*bs;
+  const cnt=new Int32Array(BW*BH);
+  for(let y=0;y<H;y++){const by=(y/bs)|0;const row=y*W;for(let x=0;x<W;x++)if(violet[row+x])cnt[by*BW+((x/bs)|0)]++;}
+  const flag=new Uint8Array(BW*BH);
+  for(let i=0;i<BW*BH;i++)if(cnt[i]/BA>=0.08)flag[i]=1;      // bloc « violet dense » (hachure ≥ ~10%)
+  // érosion 3×3 (retire les bandes ≤1 bloc = réseau du parcours, cercles isolés)
+  const er=new Uint8Array(BW*BH);
+  for(let by=1;by<BH-1;by++)for(let bx=1;bx<BW-1;bx++){
+    let ok=1;for(let dy=-1;dy<=1&&ok;dy++)for(let dx=-1;dx<=1;dx++)if(!flag[(by+dy)*BW+bx+dx]){ok=0;break;}
+    er[by*BW+bx]=ok;
+  }
+  // ne garde que les composantes ≥ 4 blocs (~ (2,4 mm)²), puis dilatation 3×3 (restaure)
+  const zone=new Uint8Array(BW*BH),seen=new Uint8Array(BW*BH),st=[];
+  for(let s=0;s<BW*BH;s++){
+    if(!er[s]||seen[s])continue;
+    const comp=[];st.length=0;st.push(s);seen[s]=1;
+    while(st.length){const p=st.pop();comp.push(p);const px=p%BW,py=(p/BW)|0;
+      const nb=[px>0?p-1:-1,px<BW-1?p+1:-1,py>0?p-BW:-1,py<BH-1?p+BW:-1];
+      for(const q of nb)if(q>=0&&er[q]&&!seen[q]){seen[q]=1;st.push(q);}}
+    if(comp.length>=4)for(const p of comp){const px=p%BW,py=(p/BW)|0;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx=px+dx,ny=py+dy;if(nx>=0&&nx<BW&&ny>=0&&ny<BH)zone[ny*BW+nx]=1;}}
+  }
+  const out=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){const by=(y/bs)|0;const row=y*W;for(let x=0;x<W;x++)if(zone[by*BW+((x/bs)|0)])out[row+x]=1;}
+  return out;
+}
 // comble UNIQUEMENT les petits trous (< maxArea px) entièrement enclos par du
 // bloqué — homogénéise le mouchetis des bâtiments sans remplir les grandes cours
 // ouvertes (qui doivent rester franchissables).
@@ -1315,7 +1348,14 @@ function buildGrid(openR,closeR,clearR){
   //  d. anti-bruit : amas isolés < ~(1,2 m)²
   removeSmallComponents(m,W,H,Math.max(8,Math.round((1.2/gridMpp)**2)));
   const blocked=m;
-  // e. surimpression Livelox (barrières/zones interdites) → bloqué en dur
+  // e. ZONES violettes interdites (hachurées/pleines) détectées sur le raster (cartes
+  //    sans surimpression Livelox) — n'utilise PAS le seuil d'épaisseur (postes saufs).
+  if(overprintOn){
+    const pxMm=(mapScale/1000)/gridMpp;
+    const hz=detectHatchZones(violet,W,H,pxMm);
+    for(let i=0;i<n;i++)if(hz[i])blocked[i]=1;
+  }
+  // f. surimpression Livelox (barrières/zones interdites) → bloqué en dur
   if(overprintCvs&&overprintOn){
     const oc=document.createElement('canvas');oc.width=W;oc.height=H;
     const ox=oc.getContext('2d',{willReadFrequently:true});ox.drawImage(overprintCvs,0,0,W,H);
@@ -1689,7 +1729,7 @@ function doAnalysis(){
     if(pendingBrush){applyBrushStrokes(pendingBrush);pendingBrush=null;log('Corrections pinceau réappliquées','ok');}
     // on CONSERVE les choix déjà calculés (ré-analyser un poste écrase juste ce poste)
     $('btn-analyze').disabled=false;$('btn-analyze-all').disabled=false;
-    updateLegUI();
+    updateLegUI();updateOverprintBtn();
     log(`Analyse OK en ${dt}s — grille ${grid.W}×${grid.H}, ${(nb/grid.blocked.length*100).toFixed(1)}% bloqué`,'ok');
     stat('carte prête');render();
   },10);
