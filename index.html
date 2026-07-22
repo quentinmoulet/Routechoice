@@ -807,7 +807,11 @@ function loadImage(src,name,after){
 // infranchissable), 709 (zone interdite/dangereuse), 714 (hors-limite) — remplis en
 // plein, rendus à la taille de la carte (le SVG en mm couvre exactement la carte).
 // Sert à la fois à l'AFFICHAGE (violet translucide) et au MASQUE d'obstacles.
-const OVERPRINT_BLOCK=[708,709,714];
+// On RETIRE le marquage du parcours (l'app le dessine déjà) ; tout le reste est un
+// obstacle. Distinction par NATURE, pas par numéro : une ZONE a un remplissage (plein
+// ou hachuré) → on la remplit en PLEIN ; une BARRIÈRE n'a qu'un trait → on la laisse
+// en trait (sinon une ligne « chapeau chinois » se referme en triangle plein).
+const OVERPRINT_MARKS=[701,702,703,704,705,706,707]; // départ, route, poste, numéro, arrivée, point de passage, trait de liaison
 async function buildOverprint(){
   const po=pendingOverprint;if(!po||!po.url||!srcImg)return;
   try{
@@ -817,12 +821,16 @@ async function buildOverprint(){
     const doc=new DOMParser().parseFromString(txt,'image/svg+xml');
     if(doc.querySelector('parsererror'))return;
     const svg=doc.documentElement;
-    svg.querySelectorAll('g[id^="Sym_"]').forEach(g=>{const n=+((g.id.match(/Sym_(\d+)/)||[])[1]);if(OVERPRINT_BLOCK.indexOf(n)<0)g.remove();});
+    svg.querySelectorAll('g[id^="Sym_"]').forEach(g=>{const n=+((g.id.match(/Sym_(\d+)/)||[])[1]);if(OVERPRINT_MARKS.indexOf(n)>=0)g.remove();});
     if(!svg.querySelector('path')){overprintCvs=null;updateOverprintBtn();return;} // aucune barrière/zone
-    svg.querySelectorAll('[fill^="url("]').forEach(e=>e.removeAttribute('fill')); // hachures → plein
+    // recolore en magenta : tout remplissage (hachures incl.) → PLEIN ; les traits
+    // restent des traits. On ne touche PAS aux « fill:none » (barrières = trait seul).
+    const COL='rgb(200,30,140)';
+    svg.querySelectorAll('[fill]').forEach(e=>{const f=e.getAttribute('fill');if(f&&f!=='none')e.setAttribute('fill',COL);});
+    svg.querySelectorAll('[stroke]').forEach(e=>{const st=e.getAttribute('stroke');if(st&&st!=='none')e.setAttribute('stroke',COL);});
+    svg.querySelectorAll('[style]').forEach(e=>{if(e===svg)return;let st=e.getAttribute('style');if(/fill\s*:|stroke\s*:/.test(st)){e.setAttribute('style',st.replace(/fill:\s*(?!none)[^;]+/g,'fill:'+COL).replace(/stroke:\s*(?!none)[^;]+/g,'stroke:'+COL));}});
     const W=srcImg.width,H=srcImg.height;
-    svg.setAttribute('width',W);svg.setAttribute('height',H);
-    svg.setAttribute('style','fill:rgb(200,30,140);stroke:rgb(200,30,140);fill-rule:evenodd');
+    svg.setAttribute('width',W);svg.setAttribute('height',H);   // root garde fill:none → barrières en trait
     const str=new XMLSerializer().serializeToString(svg);
     const dataUrl='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(str)));
     await new Promise(res=>{const img=new Image();
