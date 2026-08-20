@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Splits — temps intermédiaires CO</title>
+<title>Splits — orienteering split times</title>
 <link rel="icon" href="icon.svg" />
 <style>
   :root{
@@ -126,7 +126,10 @@
   td.crt .sub{font-size:11px;color:var(--muted);font-weight:700}
 
   /* en-tête de poste : gros numéro, code dessous, PAS de soulignage */
-  th.leg{padding:5px 6px;border-bottom:2px solid var(--line);min-width:74px}
+  th.leg{padding:5px 6px;border-bottom:2px solid var(--line);min-width:74px;cursor:ew-resize;user-select:none}
+  /* section isolée (glisser sur les n° de poste) : surlignage orange clair */
+  td.leg.secsel,th.leg.secsel{background:rgba(255,138,61,.16)}
+  th.leg.secprev{background:rgba(255,138,61,.30)}
   th.leg .no{font-size:15px;font-weight:700;line-height:1}
   th.leg .cd{font-size:10px;color:var(--muted);font-weight:600;margin-top:2px}
 
@@ -219,33 +222,34 @@
   <aside id="side">
     <div class="brand"><b>Splits</b></div>
     <div class="field">
-      <label>Date de la course</label>
+      <label>Race date</label>
       <input type="date" id="date" />
-      <button id="search">Chercher</button>
+      <button id="search">Search</button>
     </div>
-    <button class="ghost" id="importBtn">Importer PDF / XML</button>
+    <button class="ghost" id="importBtn">Import PDF / XML</button>
     <div id="events"></div>
     <div class="saved">
-      <div class="head">Mes évènements</div>
-      <div class="savedlist" id="savedlist"><div class="evhint" style="padding:2px">Aucun pour l'instant.</div></div>
+      <div class="head">My events</div>
+      <div class="savedlist" id="savedlist"><div class="evhint" style="padding:2px">None yet.</div></div>
     </div>
   </aside>
 
   <div id="main">
     <div id="subbar">
-      <button class="ghost iconbtn" id="sideToggle" title="Afficher / masquer mes évènements">☰</button>
+      <button class="ghost iconbtn" id="sideToggle" title="Show / hide my events">☰</button>
       <div class="title" id="evtitle"></div>
       <div class="field" style="gap:2px">
-        <label>Catégorie</label>
+        <label>Category</label>
         <select id="catsel"></select>
       </div>
-      <button class="ghost" id="graphBtn" style="display:none">Graphique</button>
-      <button class="ghost" id="cmpBtn" style="display:none">Comparer les épinglés</button>
-      <div style="color:var(--muted);font-size:12px;font-weight:600" id="pinhint">Clique un coureur pour l'épingler en bas.</div>
+      <button class="ghost" id="graphBtn" style="display:none">Graph</button>
+      <button class="ghost" id="cmpBtn" style="display:none">Compare pinned</button>
+      <button class="ghost on" id="secReset" style="display:none"></button>
+      <div style="color:var(--muted);font-size:12px;font-weight:600" id="pinhint">Click a runner to pin them at the bottom.</div>
     </div>
 
     <div id="wrap">
-      <div id="empty">Choisis une date puis un évènement — ou importe un fichier de splits.<br>Tout est enregistré dans « Mes évènements ».</div>
+      <div id="empty">Pick a date then an event — or import a splits file.<br>Everything is saved to "My events".</div>
     </div>
     <div id="pinbar"></div>
   </div>
@@ -254,11 +258,11 @@
 <!-- modale import -->
 <div id="imp">
   <div class="modal">
-    <h3>Importer des splits</h3>
-    <p>Dépose un fichier <b>XML</b> (IOF 2.0.3 ou 3.0, depuis Eventor/MeOS/WinSplits…) ou un <b>PDF</b> de temps intermédiaires (lignes de 6 postes, plusieurs lignes par coureur).</p>
-    <div class="drop" id="drop">Clique ou dépose un fichier ici<br><small>.xml · .pdf</small></div>
+    <h3>Import splits</h3>
+    <p>Drop an <b>XML</b> file (IOF 2.0.3 or 3.0, from Eventor/MeOS/WinSplits…) or a <b>PDF</b> of split times (rows of 6 controls, several rows per runner).</p>
+    <div class="drop" id="drop">Click or drop a file here<br><small>.xml · .pdf</small></div>
     <input type="file" id="file" accept=".xml,.pdf" hidden />
-    <div class="row"><button class="ghost" id="impClose">Fermer</button></div>
+    <div class="row"><button class="ghost" id="impClose">Close</button></div>
   </div>
 </div>
 
@@ -274,6 +278,15 @@ const pinned = new Set();        // ids de coureurs épinglés (par index)
 let compareMode = false;         // comparaison entre coureurs épinglés
 let current = null;              // modèle affiché {title, source, categories?, ...}
 let graphMode = false, graphType = "leader", graphSel = null, _graphModel = null;  // vue graphique
+let sectionRanges = [];                          // sections isolées (glisser sur les n° de poste)
+let _dragStart = null, _dragEnd = null, _dragCtrl = false;   // état du glisser
+// fusionne des plages [start,end] (tri + regroupe celles qui se touchent)
+function mergeRanges(rs){
+  rs=rs.map(r=>[Math.min(r[0],r[1]),Math.max(r[0],r[1])]).sort((a,b)=>a[0]-b[0]);
+  const out=[]; for(const r of rs){ const last=out[out.length-1];
+    if(last && r[0]<=last[1]+1) last[1]=Math.max(last[1],r[1]); else out.push(r.slice()); }
+  return out;
+}
 
 const toast = (m,ms=2200)=>{const t=$("#toast");t.innerHTML=m;t.classList.add("show");clearTimeout(toast._);toast._=setTimeout(()=>t.classList.remove("show"),ms);};
 
@@ -290,7 +303,7 @@ async function fetchHtml(params){
   const u=PROXY+"?"+new URLSearchParams(params).toString();
   const r=await fetch(u);
   const ct=r.headers.get("content-type")||"";
-  if(ct.includes("application/json")){const j=await r.json();throw new Error(j.error||"erreur proxy");}
+  if(ct.includes("application/json")){const j=await r.json();throw new Error(j.error||"proxy error");}
   if(!r.ok) throw new Error("HTTP "+r.status);
   return r.text();
 }
@@ -300,7 +313,7 @@ const cellText = td => (td.textContent||"").replace(/ /g," ").replace(/\s+/g," 
 /* ============================ recherche d'évènements ============================ */
 async function searchEvents(iso){
   const box=$("#events"); box.classList.add("show");
-  box.innerHTML='<div class="evhint"><span class="spin"></span>Recherche des courses du '+iso+'…</div>';
+  box.innerHTML='<div class="evhint"><span class="spin"></span>Searching races on '+iso+'…</div>';
   try{
     const html=await fetchHtml({op:"events",from:iso,to:iso});
     const doc=parseDoc(html);
@@ -314,17 +327,17 @@ async function searchEvents(iso){
       evs.push({id, name:cellText(a),
         club:tds[2]||"", country:tds[3]||"", runners:tds[4]||"", date:tds[0]||iso});
     });
-    if(!evs.length){box.innerHTML='<div class="evhint">Aucune course trouvée pour le '+iso+'.</div>';return;}
+    if(!evs.length){box.innerHTML='<div class="evhint">No race found for '+iso+'.</div>';return;}
     box.innerHTML="";
     evs.forEach(ev=>{
       const r=document.createElement("div");r.className="evrow";
       r.innerHTML=`<span class="nm"></span><span class="meta"></span>`;
       r.querySelector(".nm").textContent=ev.name;
-      r.querySelector(".meta").textContent=[ev.club,ev.country,ev.runners?ev.runners+" coureurs":""].filter(Boolean).join(" · ");
+      r.querySelector(".meta").textContent=[ev.club,ev.country,ev.runners?ev.runners+" runners":""].filter(Boolean).join(" · ");
       r.onclick=()=>{ openEvent(ev); box.classList.remove("show"); };
       box.appendChild(r);
     });
-  }catch(e){ box.innerHTML='<div class="evhint">Erreur : '+e.message+'. (Le proxy /api/ws doit tourner — lance <code>python server.py</code> en local.)</div>'; }
+  }catch(e){ box.innerHTML='<div class="evhint">Error: '+e.message+'. (The /api/ws proxy must be running — run <code>python server.py</code> locally.)</div>'; }
 }
 
 /* ============================ Mes évènements (localStorage) ============================ */
@@ -341,7 +354,7 @@ function saveFileEvent(model){
 }
 function renderSaved(){
   const a=loadSaved(),box=$("#savedlist");
-  if(!a.length){box.innerHTML='<div class="evhint" style="padding:2px">Aucun pour l\'instant.</div>';return;}
+  if(!a.length){box.innerHTML='<div class="evhint" style="padding:2px">None yet.</div>';return;}
   box.innerHTML="";
   a.forEach(ev=>{
     const c=document.createElement("div");c.className="chip"+(current && (current._key===ev.id)?" on":"");
@@ -359,8 +372,8 @@ function renderSaved(){
 function exportEvent(ev){
   const url=location.origin+location.pathname+"?ev="+encodeURIComponent(ev.id);
   if(navigator.clipboard&&navigator.clipboard.writeText)
-    navigator.clipboard.writeText(url).then(()=>toast("Lien d'export copié"),()=>prompt("Lien d'export :",url));
-  else prompt("Lien d'export :",url);
+    navigator.clipboard.writeText(url).then(()=>toast("Export link copied"),()=>prompt("Export link:",url));
+  else prompt("Export link:",url);
 }
 
 /* ============================ ouverture évènement live ============================ */
@@ -379,9 +392,9 @@ function pickDefaultCat(cats){
 }
 async function openEvent(ev){
   pinned.clear(); $("#events").classList.remove("show"); $("#side").classList.add("hidden");
-  $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Chargement des catégories…</div>';
+  $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Loading categories…</div>';
   $("#subbar").classList.add("show");
-  $("#evtitle").innerHTML=esc(ev.name||"Évènement "+ev.id)+' <small>'+(ev.date||"")+'</small>';
+  $("#evtitle").innerHTML=esc(ev.name||"Event "+ev.id)+' <small>'+(ev.date||"")+'</small>';
   try{
     const html=await fetchHtml({op:"classes",id:ev.id});
     const doc=parseDoc(html);
@@ -391,7 +404,7 @@ async function openEvent(ev){
     let info=""; doc.querySelectorAll("td").forEach(td=>{const t=cellText(td);
       if(/\[\d{2}\/\d{2}\/\d{4}\]/.test(t) && (!info || t.length<info.length)) info=t;});
     const dm=info.match(/\[(\d{2}\/\d{2}\/\d{4})\]/);
-    const name=ev.name||info.replace(/\s*\[\d{2}\/\d{2}\/\d{4}\].*$/,"").trim()||("Évènement "+ev.id);
+    const name=ev.name||info.replace(/\s*\[\d{2}\/\d{2}\/\d{4}\].*$/,"").trim()||("Event "+ev.id);
     const date=ev.date||(dm?dm[1]:"");
     ev.name=name; ev.date=date;                 // pour la sauvegarde (lien d'export)
     saveEvent(ev);
@@ -412,18 +425,18 @@ async function openEvent(ev){
     sel.onchange=()=>loadTable(ev.id,sel.value);
     renderSaved();
     if(cats.length) loadTable(ev.id,cats[defIdx].cat);
-    else $("#wrap").innerHTML='<div id="empty">Aucune catégorie.</div>';
-  }catch(e){ $("#wrap").innerHTML='<div id="empty">Erreur : '+e.message+'</div>'; }
+    else $("#wrap").innerHTML='<div id="empty">No category.</div>';
+  }catch(e){ $("#wrap").innerHTML='<div id="empty">Error: '+e.message+'</div>'; }
 }
 async function loadTable(id,cat){
   pinned.clear();
-  $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Chargement des temps…</div>';
+  $("#wrap").innerHTML='<div id="empty"><span class="spin"></span> Loading times…</div>';
   try{
     const html=await fetchHtml({op:"table",id,cat});
     const model=parseLiveTable(html);
     model.title=current.title; model.category=(current.cats.find(c=>c.cat===cat)||{}).name||"";
     render(model);
-  }catch(e){ $("#wrap").innerHTML='<div id="empty">Erreur : '+e.message+'</div>'; }
+  }catch(e){ $("#wrap").innerHTML='<div id="empty">Error: '+e.message+'</div>'; }
 }
 
 /* ============================ parsing table WinSplits ============================
@@ -452,7 +465,7 @@ function parseLiveTable(html){
   // la grande table = celle qui contient le plus de <tr>
   let best=null,n=-1;
   doc.querySelectorAll("table").forEach(t=>{const c=t.querySelectorAll("tr").length;if(c>n){n=c;best=t;}});
-  if(!best) throw new Error("Table de splits introuvable");
+  if(!best) throw new Error("Splits table not found");
   const rows=[...best.querySelectorAll("tr")].map(r=>[...r.querySelectorAll("td,th")].map(cellText));
   // en-tête des tronçons = la ligne contenant "S-1 (…)"
   let hIdx=rows.findIndex(r=>r.some(c=>/^S-\w+/.test(c)));
@@ -501,13 +514,13 @@ function rkText(r){ return r===1?"r1":r===2?"r2":r===3?"r3":""; }
 
 function render(model){
   current=Object.assign(current||{},{model});
-  // nouveau modèle (autre catégorie/évènement) -> réinitialise la vue graphique
-  if(model!==_graphModel){ _graphModel=model; graphSel=null; graphMode=false; }
+  // nouveau modèle (autre catégorie/évènement) -> réinitialise vue graphique + section
+  if(model!==_graphModel){ _graphModel=model; graphSel=null; graphMode=false; sectionRanges=[]; }
   if(model.category) $("#evtitle").innerHTML=(model.title||"")+' <small>'+(model.category||"")+'</small>';
   const legs=model.legs, runners=model.runners;
   const wrap=$("#wrap");
-  const gb=$("#graphBtn"); if(gb){ gb.style.display=runners.length?"":"none"; gb.textContent="Graphique"; }
-  if(!runners.length){wrap.innerHTML='<div id="empty">Aucun coureur.</div>';return;}
+  const gb=$("#graphBtn"); if(gb){ gb.style.display=runners.length?"":"none"; gb.textContent="Graph"; }
+  if(!runners.length){wrap.innerHTML='<div id="empty">No runner.</div>';return;}
 
   // bouton comparateur : visible dès 2 coureurs épinglés
   const canCompare=pinned.size>=2;
@@ -561,46 +574,94 @@ function render(model){
     return (dt>ERR_SEC && dt/exp*100>ERR_PCT)?{lost:Math.round(dt)}:null;
   };
 
+  // ---- Mode "section" : isole un/des tronçon(s) (glisser sur les n° de poste),
+  // re-classe sur le temps total de section, cumul relatif (0 au 1er poste de section). ----
+  const secOn = sectionRanges.length>0;
+  let secCum=null, secCol=new Set(), secCrank=[], secMin=[], secPos={}, secWin=null, order=runners.map((_,i)=>i);
+  if(secOn){
+    sectionRanges.forEach(([s,e])=>{ for(let k=s;k<=e;k++) secCol.add(k); });
+    secCum=runners.map(rr=>{
+      let acc=0; const map={};
+      for(const [s,e] of sectionRanges){
+        const base=rr.legs[s]&&rr.legs[s]._cum; if(base==null) return null;   // départ de section = 0
+        map[s]=acc;
+        for(let k=s+1;k<=e;k++){ const c=rr.legs[k]&&rr.legs[k]._cum; if(c==null) return null; map[k]=acc+(c-base); }
+        acc+=rr.legs[e]._cum-base;
+      }
+      return {map,total:acc};
+    });
+    [...secCol].forEach(k=>{
+      secCrank[k]={};
+      const arr=runners.map((_,i)=>({i,v:secCum[i]?secCum[i].map[k]:null})).filter(x=>x.v!=null).sort((a,b)=>a.v-b.v);
+      secMin[k]=arr.length?arr[0].v:null;
+      let r=0,pv=null,n=0; arr.forEach(x=>{n++; if(x.v!==pv){r=n;pv=x.v;} secCrank[k][x.i]=r;});
+    });
+    const tw=secCum.map(c=>c?c.total:null).filter(v=>v!=null); secWin=tw.length?Math.min(...tw):null;
+    order=runners.map((_,i)=>i).sort((a,b)=>((secCum[a]?secCum[a].total:Infinity)-(secCum[b]?secCum[b].total:Infinity)));
+    let rk=0,pv=null,n=0; order.forEach(i=>{ const v=secCum[i]?secCum[i].total:null; if(v==null){secPos[i]="";return;} n++; if(v!==pv){rk=n;pv=v;} secPos[i]=String(rk); });
+  }
+  const sb=$("#secReset"); if(sb){ sb.style.display=secOn?"":"none"; if(secOn) sb.textContent="Section "+sectionRanges.map(([s,e])=>legs[s].no+"→"+legs[e].no).join(", ")+" ✕"; }
+
   const head=`<thead><tr>
     <th class="cpos">#</th>
     <th class="cname" style="left:36px">Nom</th>
-    ${legs.map(l=>`<th class="leg"><div class="no">${l.no}</div>${l.code?`<div class="cd">${l.code}</div>`:""}</th>`).join("")}
-    <th class="crt">Coureur · total</th>
+    ${legs.map((l,k)=>`<th class="leg${secOn&&secCol.has(k)?" secsel":""}" data-col="${k}"><div class="no">${l.no}</div>${l.code?`<div class="cd">${l.code}</div>`:""}</th>`).join("")}
+    <th class="crt">Runner · total</th>
   </tr></thead>`;
 
   const rowHtml=(rr,idx,foot=false)=>{
     const useSub=foot&&sub;                            // comparaison : seulement dans la zone épinglée
     const ref=useSub?sub:all;
+    const sc=secOn?secCum[idx]:null;
     const cells=legs.map((l,k)=>{
       const d=rr.legs[k]||{};
-      const sr=useSub?(sub.rS[k][idx]||null):d.srank;  // rang servant à colorer
-      const cr=useSub?(sub.rC[k][idx]||null):d.crank;
-      const gs=gap(d._split,ref.bS[k]), gc=gap(d._cum,ref.bC[k]);
+      const sr=useSub?(sub.rS[k][idx]||null):d.srank;  // rang servant à colorer les splits (normaux)
+      const gs=gap(d._split,ref.bS[k]);
       const e=errInfo(d,k,idx), isE=!!e;
-      // survol : écart au split ; si erreur, ajoute le temps perdu (méthode WinSplits Pro)
-      let ttl=gs;
-      if(isE) ttl=(gs?gs+"\n":"")+"Perte ~+"+fmtSec(e.lost);
-      return `<td class="leg">
+      let ttl=gs; if(isE) ttl=(gs?gs+"\n":"")+"Loss ~+"+fmtSec(e.lost);
+      // cumul : section (relatif) si actif, sinon normal
+      let cumDiv;
+      if(secOn){
+        if(secCol.has(k)&&sc){ const v=sc.map[k], scr=secCrank[k][idx];
+          const sg=(v!=null&&secMin[k]!=null&&v>secMin[k])?"+"+fmtSec(v-secMin[k]):"";
+          cumDiv=`<div class="cum ${rkText(scr)}"${sg?` title="${sg}"`:""}>${fmtSec(v)}${scr?`<span class="rk ${rkText(scr)}">${scr}</span>`:""}</div>`;
+        } else cumDiv=`<div class="cum"></div>`;   // hors section : cumul masqué
+      } else {
+        const cr=useSub?(sub.rC[k][idx]||null):d.crank;
+        const gc=gap(d._cum,ref.bC[k]);
+        cumDiv=`<div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>`;
+      }
+      return `<td class="leg${secOn&&secCol.has(k)?" secsel":""}">
         <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${isE?" err":""}"${ttl?` title="${ttl}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
-        <div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>
+        ${cumDiv}
       </td>`;
     }).join("");
+    const posTxt=secOn?(secPos[idx]||""):(rr.pos||"");
+    const finTxt=secOn?(sc?fmtSec(sc.total):""):(rr.finish||"");
+    const difTxt=secOn?((sc&&secWin!=null)?"+"+fmtSec(sc.total-secWin):""):(rr.diff||"");
     return `<tr data-i="${idx}" class="${pinned.has(idx)&&!foot?"sel":""}">
-      <td class="cpos">${rr.pos||""}</td>
+      <td class="cpos">${posTxt}</td>
       <td class="cname" style="left:36px">
         <div class="n"><span class="full">${esc(rr.name)}</span><span class="ini">${esc(initials(rr.name))}</span></div>
-        <div class="sub"><span class="club">${esc(rr.club||"")}</span><span class="tot"><b>${esc(rr.finish||"")}</b>${rr.diff?" "+esc(rr.diff):""}</span></div>
+        <div class="sub"><span class="club">${esc(rr.club||"")}</span><span class="tot"><b>${esc(finTxt)}</b>${difTxt?" "+esc(difTxt):""}</span></div>
       </td>
       ${cells}
       <td class="crt">
         <div class="n">${esc(rr.name)}</div>
-        <div class="sub"><b>${esc(rr.finish||"")}</b>${rr.diff?" · "+esc(rr.diff):""}</div>
+        <div class="sub"><b>${esc(finTxt)}</b>${difTxt?" · "+esc(difTxt):""}</div>
       </td>
     </tr>`;
   };
 
-  const body="<tbody>"+runners.map((r,i)=>rowHtml(r,i)).join("")+"</tbody>";
+  const body="<tbody>"+order.map(i=>rowHtml(runners[i],i)).join("")+"</tbody>";
   wrap.innerHTML=`<table>${head}${body}</table>`;
+  // sélection de section : glisser sur les n° de poste (Ctrl = ajouter une 2e section)
+  const markPreview=()=>{ if(_dragStart==null)return; const lo=Math.min(_dragStart,_dragEnd),hi=Math.max(_dragStart,_dragEnd);
+    wrap.querySelectorAll("thead th.leg").forEach(t=>t.classList.toggle("secprev",+t.dataset.col>=lo&&+t.dataset.col<=hi)); };
+  wrap.querySelectorAll("thead th.leg").forEach(th=>{
+    th.onmousedown=(ev)=>{ ev.preventDefault(); _dragStart=+th.dataset.col; _dragEnd=_dragStart; _dragCtrl=ev.ctrlKey||ev.metaKey; markPreview(); };
+    th.onmouseenter=()=>{ if(_dragStart==null)return; _dragEnd=+th.dataset.col; markPreview(); };
+  });
 
   // panneau des épinglés : table séparée sous le tableau (toujours visible),
   // colonnes calées sur les largeurs mesurées de l'en-tête + scroll horizontal synchronisé.
@@ -635,7 +696,7 @@ function gNiceStep(max){ for(const s of [15,30,60,120,180,300,600,900]) if(max/s
 
 function toggleGraph(){
   graphMode=!graphMode;
-  $("#graphBtn").textContent=graphMode?"Tableau":"Graphique";
+  $("#graphBtn").textContent=graphMode?"Table":"Graph";
   if(graphMode) renderGraph(); else render(current.model);
 }
 function renderGraph(){
@@ -659,9 +720,9 @@ function renderGraph(){
   // structure : légende À GAUCHE, graphe à droite
   $("#wrap").innerHTML=`<div id="graphview">
     <div class="gbar">
-      <span class="lbl">Graphique :</span>
+      <span class="lbl">Graph:</span>
       <div class="gtype">
-        <button class="ghost gt" data-t="leader">Derrière le leader</button>
+        <button class="ghost gt" data-t="leader">Behind leader</button>
         <button class="ghost gt" data-t="superman">Superman</button>
       </div>
     </div>
@@ -744,7 +805,7 @@ function openFileEvent(ev){
   const data=ev.payload;
   current={_key:ev.id, source:"file", title:data.title, date:data.date, cats:data.categories.map((c,i)=>({cat:i,name:c.category}))};
   $("#subbar").classList.add("show");
-  $("#evtitle").innerHTML=esc(data.title)+' <small>'+(data.date||"importé")+'</small>';
+  $("#evtitle").innerHTML=esc(data.title)+' <small>'+(data.date||"imported")+'</small>';
   const sel=$("#catsel"); sel.innerHTML="";
   data.categories.forEach((c,i)=>{const o=document.createElement("option");o.value=i;o.textContent=c.category||("Cat "+(i+1));sel.appendChild(o);});
   sel.onchange=()=>{const m=data.categories[+sel.value];render(Object.assign({title:data.title},m));};
@@ -773,11 +834,11 @@ function parseIofXml(text){
   const T=(el,sel)=>{const e=el&&el.querySelector(sel);return e?e.textContent.trim():"";};
   // temps sous un élément <X> : utilise <Clock> s'il existe (v2), sinon le texte (v3)
   const timeUnder=(el,sel)=>{const e=el&&el.querySelector(sel);if(!e)return null;const c=e.querySelector("Clock");return xmlTime((c||e).textContent);};
-  const evName=T(doc,"Event > Name")||"Import XML";
+  const evName=T(doc,"Event > Name")||"XML import";
   const date=(T(doc,"Event Date")||"").slice(0,10);
   const categories=[];
   doc.querySelectorAll("ClassResult").forEach(cr=>{
-    const cname=T(cr,"Class > Name")||T(cr,"Class > ShortName")||T(cr,"ClassShortName")||T(cr,"ClassLongName")||"Catégorie";
+    const cname=T(cr,"Class > Name")||T(cr,"Class > ShortName")||T(cr,"ClassShortName")||T(cr,"ClassLongName")||"Category";
     // ordre des postes : on prend la liste de codes la plus longue parmi les coureurs
     let order=[];
     cr.querySelectorAll("Result").forEach(res=>{
@@ -809,7 +870,7 @@ function parseIofXml(text){
     });
     if(runners.length){ rankAndDiff(runners,legs); categories.push({category:cname,legs,runners}); }
   });
-  if(!categories.length) throw new Error("Aucun ClassResult dans le XML");
+  if(!categories.length) throw new Error("No ClassResult in the XML");
   return {title:evName,date,categories,source:"file"};
 }
 
@@ -852,7 +913,7 @@ function rankBy(runners,val,set){
 async function parsePdf(buf){
   if(!window.pdfjsLib){
     await new Promise((ok,err)=>{const s=document.createElement("script");
-      s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=ok;s.onerror=()=>err(new Error("pdf.js indisponible (hors ligne ?)"));document.head.appendChild(s);});
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=ok;s.onerror=()=>err(new Error("pdf.js unavailable (offline?)"));document.head.appendChild(s);});
     window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
   const pdf=await pdfjsLib.getDocument({data:buf}).promise;
@@ -886,21 +947,21 @@ function parseSplitLines(lines){
     if(startsRunner && (!cur || cur.times.length>=6)){
       flush();
       const name=ln.replace(tRe,"").replace(/\(\d+\)/g,"").replace(/^\s*\d{1,3}[\.)]?\s*/,"").replace(/\s+/g," ").trim();
-      cur={name:name||("Coureur "+(runners.length+1)),times:[]};
+      cur={name:name||("Runner "+(runners.length+1)),times:[]};
     }
-    if(!cur) cur={name:"Coureur "+(runners.length+1),times:[]};
+    if(!cur) cur={name:"Runner "+(runners.length+1),times:[]};
     if(times) times.forEach(t=>cur.times.push(t.replace(".",":")));
   }
   flush();
   runners.forEach(r=>maxLegs=Math.max(maxLegs,r.times.length));
-  if(!runners.length) throw new Error("Aucun temps détecté dans le PDF. Format trop différent ?");
+  if(!runners.length) throw new Error("No times detected in the PDF. Format too different?");
   const legs=Array.from({length:maxLegs},(_,i)=>({label:(i+1)+"",no:String(i+1),code:""}));
   const R=runners.map(r=>{
     const legData=r.times.map(t=>({split:t,cum:"",srank:null,crank:null}));
     while(legData.length<maxLegs) legData.push({split:"",cum:""});
     return {pos:"",name:r.name,club:"",finish:r.times[r.times.length-1]||"",diff:"",legs:legData};
   });
-  return {title:"Import PDF",date:"",categories:[{category:"Importé (PDF)",legs,runners:R}],source:"file"};
+  return {title:"PDF import",date:"",categories:[{category:"Imported (PDF)",legs,runners:R}],source:"file"};
 }
 
 /* ============================ handlers import ============================ */
@@ -916,22 +977,32 @@ file.onchange=()=>{if(file.files[0])handleFile(file.files[0]);};
 
 async function handleFile(f){
   $("#imp").classList.remove("show");
-  toast('<span class="spin"></span>Lecture de '+f.name+'…',6000);
+  toast('<span class="spin"></span>Reading '+f.name+'…',6000);
   try{
     let model;
     if(/\.xml$/i.test(f.name)){ model=parseIofXml(await f.text()); }
     else if(/\.pdf$/i.test(f.name)){ model=await parsePdf(await f.arrayBuffer()); }
-    else throw new Error("Format non géré (.xml ou .pdf)");
+    else throw new Error("Unsupported format (.xml or .pdf)");
     const id=saveFileEvent(model);
     openFileEvent({id,payload:model});
-    toast("Importé : "+model.title);
+    toast("Imported: "+model.title);
   }catch(e){ toast("❌ "+e.message,4000); }
 }
 
 /* ============================ démarrage ============================ */
 $("#cmpBtn").onclick=()=>{ compareMode=!compareMode; if(current&&current.model) render(current.model); };
 $("#graphBtn").onclick=()=>{ if(current&&current.model) toggleGraph(); };
+$("#secReset").onclick=()=>{ sectionRanges=[]; if(current&&current.model&&!graphMode) render(current.model); };
 $("#sideToggle").onclick=()=>$("#side").classList.toggle("hidden");
+// fin du glisser sur les n° de poste -> valide la section (clic simple = réinitialise)
+document.addEventListener("mouseup",()=>{
+  if(_dragStart==null) return;
+  const lo=Math.min(_dragStart,_dragEnd), hi=Math.max(_dragStart,_dragEnd), ctrl=_dragCtrl;
+  _dragStart=null;
+  if(lo===hi && !ctrl) sectionRanges=[];
+  else sectionRanges = ctrl ? mergeRanges([...sectionRanges,[lo,hi]]) : [[lo,hi]];
+  if(current&&current.model&&!graphMode) render(current.model);
+});
 $("#date").value=todayISO();
 $("#search").onclick=()=>$("#date").value&&searchEvents($("#date").value);
 $("#date").onchange=()=>$("#date").value&&searchEvents($("#date").value);
