@@ -56,6 +56,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._image(urllib.parse.parse_qs(u.query))
         if u.path == "/api/ws":
             return self._winsplits(urllib.parse.parse_qs(u.query))
+        if u.path == "/api/si":
+            return self._sportident(urllib.parse.parse_qs(u.query))
         if u.path == "/api/share":
             sid = (urllib.parse.parse_qs(u.query).get("id") or [""])[0]
             fp = os.path.join(SHARE_DIR, os.path.basename(sid) + ".json")
@@ -175,6 +177,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 headers=hdr)
 
         return opener.open(req, timeout=60).read().decode("iso-8859-1")
+
+    def _sportident(self, qs):
+        # Relai SPORTident Center : JSON meta (deja CORS-open cote source, relaye quand
+        # meme pour n'avoir qu'un point d'acces) + blob protobuf des resultats (S3/CloudFront,
+        # PAS de CORS -> proxy obligatoire ici). Le client decode le protobuf lui-meme.
+        op = (qs.get("op") or [""])[0]
+        if op == "event":
+            slug = (qs.get("slug") or [""])[0]
+            if not slug:
+                return self._send(400, '{"error":"slug manquant"}', "application/json")
+            try:
+                url = "https://center.sportident.com/api/rest/v1/public/events/slug/" + "/".join(
+                    urllib.parse.quote(p, safe="") for p in slug.split("/"))
+                req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return self._send(200, r.read(), "application/json")
+            except Exception as e:
+                return self._send(502, json.dumps({"error": str(e)}), "application/json")
+        if op == "bin":
+            guid = (qs.get("guid") or [""])[0]
+            if not guid:
+                return self._send(400, '{"error":"guid manquant"}', "application/json")
+            try:
+                url = "https://center.sportident.com/event-files/%s/results/r.1.latest.bin" % urllib.parse.quote(guid, safe="")
+                req = urllib.request.Request(url, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    data = r.read()
+                    if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+                        import gzip
+                        data = gzip.decompress(data)
+                return self._send(200, data, "application/octet-stream")
+            except Exception as e:
+                return self._send(502, json.dumps({"error": str(e)}), "application/json")
+        return self._send(400, '{"error":"op invalide"}', "application/json")
 
     def _image(self, qs):
         url = (qs.get("url") or [None])[0]
