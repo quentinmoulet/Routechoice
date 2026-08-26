@@ -262,6 +262,11 @@
     <p>Drop an <b>XML</b> file (IOF 2.0.3 or 3.0, from Eventor/MeOS/WinSplits…) or a <b>PDF</b> of split times (rows of 6 controls, several rows per runner).</p>
     <div class="drop" id="drop">Click or drop a file here<br><small>.xml · .pdf</small></div>
     <input type="file" id="file" accept=".xml,.pdf" hidden />
+    <p style="margin:14px 0 6px">Or paste a <b>SPORTident Center</b> results link:</p>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="siUrl" placeholder="https://center.sportident.com/results/…" style="flex:1;min-width:0" />
+      <button id="siLoad">Load</button>
+    </div>
     <div class="row"><button class="ghost" id="impClose">Close</button></div>
   </div>
 </div>
@@ -575,7 +580,8 @@ function render(model){
   };
 
   // ---- Mode "section" : isole un/des tronçon(s) (glisser sur les n° de poste),
-  // re-classe sur le temps total de section, cumul relatif (0 au 1er poste de section). ----
+  // re-classe sur le temps total de la section (le 1er tronçon inclus), cumul
+  // relatif au poste précédant la section. ----
   const secOn = sectionRanges.length>0;
   let secCum=null, secCol=new Set(), secCrank=[], secMin=[], secPos={}, secWin=null, order=runners.map((_,i)=>i);
   if(secOn){
@@ -583,9 +589,10 @@ function render(model){
     secCum=runners.map(rr=>{
       let acc=0; const map={};
       for(const [s,e] of sectionRanges){
-        const base=rr.legs[s]&&rr.legs[s]._cum; if(base==null) return null;   // départ de section = 0
-        map[s]=acc;
-        for(let k=s+1;k<=e;k++){ const c=rr.legs[k]&&rr.legs[k]._cum; if(c==null) return null; map[k]=acc+(c-base); }
+        // référence = cumul au poste AVANT la section (0 si elle commence au départ),
+        // pour que le temps du 1er tronçon (colonne de gauche) soit lui aussi compté.
+        const base=(s>0)?(rr.legs[s-1]&&rr.legs[s-1]._cum):0; if(base==null) return null;
+        for(let k=s;k<=e;k++){ const c=rr.legs[k]&&rr.legs[k]._cum; if(c==null) return null; map[k]=acc+(c-base); }
         acc+=rr.legs[e]._cum-base;
       }
       return {map,total:acc};
@@ -964,6 +971,146 @@ function parseSplitLines(lines){
   return {title:"PDF import",date:"",categories:[{category:"Imported (PDF)",legs,runners:R}],source:"file"};
 }
 
+/* ============================ import SPORTident Center (protobuf, reverse-ingenierie) ============================
+   Le site (Angular SPA) ne fournit ni HTML statique ni export IOF XML public : les temps
+   sont livres au navigateur sous forme d'un blob protobuf (non documente) charge depuis
+   S3/CloudFront (event-files/<guid>/results/r.1.latest.bin), SANS CORS -> proxy /api/si
+   obligatoire pour ce fichier (l'API JSON /api/rest/v1/public/events/slug/... est deja
+   CORS-open et est aussi relayee pour n'avoir qu'un seul point d'acces).
+   Schema (devine par inspection d'un evenement reel, PEUT casser si SPORTident change son
+   format cote serveur - aucune garantie de stabilite, contrairement a IOF XML) :
+     top-level msg:
+       field5  = bloc "definition" (une fois) : field1=meta evenement {1:nom,2:date},
+                 field7*=classes {1:classId, 2:{1:nom}}
+       field7* = personnes : {1:personId, 2:{1:classId, 4:prenom, 5:nom, 20:club(optionnel)}}
+       field9* = resultats  : {1:personId, 2:{1*:{1:seq(1-based), 2:{1:splitMs,2:cumMs}}, 3:statutGlobal}}
+                 (poste manque -> le sous-message 2 du split n'a que le statut, sans 1/2)
+                 statut 4 = OK ; tout le reste = non classe (MP/DNS/DNF/DSQ..., valeurs non
+                 toutes confirmees) -> total masque, comme pour l'import XML.
+   On NE decode PAS les codes de poste (31,32,...) : leur chainage est indirect et fragile ;
+   les tronçons sont juste numerotes 1..N-1 puis "F" (comme l'import PDF).                */
+function pbReadVarint(b, p) {
+  let result = 0, shift = 0, byte;
+  do { byte = b[p++]; result += (byte & 0x7f) * Math.pow(2, shift); shift += 7; } while (byte & 0x80);
+  return [result, p];
+}
+function pbParse(bytes, start, end) {
+  const out = []; let p = start;
+  while (p < end) {
+    let tag; [tag, p] = pbReadVarint(bytes, p);
+    const f = Math.floor(tag / 8), w = tag % 8;
+    if (w === 0) { let v; [v, p] = pbReadVarint(bytes, p); out.push({ f, w, v }); }
+    else if (w === 2) { let len; [len, p] = pbReadVarint(bytes, p); out.push({ f, w, raw: bytes.subarray(p, p + len) }); p += len; }
+    else if (w === 5) { p += 4; out.push({ f, w }); }
+    else if (w === 1) { p += 8; out.push({ f, w }); }
+    else throw new Error("protobuf: wire type " + w + " non gere");
+  }
+  return out;
+}
+const pbField = (items, f) => items.filter(it => it.f === f);
+const pbOne = (items, f) => pbField(items, f)[0];
+const pbStr = (it) => it ? new TextDecoder("utf-8").decode(it.raw) : "";
+const pbSub = (it) => it ? pbParse(it.raw, 0, it.raw.length) : [];
+function siParseUrl(url) {
+  const u = new URL(url);
+  if (!/(^|\.)sportident\.com$/i.test(u.hostname)) throw new Error("Not a sportident.com link");
+  const parts = u.pathname.split("/").filter(Boolean);
+  const i = parts.indexOf("results");
+  if (i < 0 || parts.length < i + 4) throw new Error("Unrecognised SPORTident Center link (expected .../results/<type>/<org>/<year>/<event>/...)");
+  const stop = parts.findIndex((p, k) => k > i + 1 && /^(overview|analysis|map)$/i.test(p));
+  const end = stop > 0 ? stop : i + 5;
+  return parts.slice(i + 2, end).join("/");
+}
+function parseSiCenter(bytes) {
+  const top = pbParse(bytes, 0, bytes.length);
+  const def = pbSub(pbOne(top, 5));
+  // La classe (Men/Women/...) n'est PAS stockee directement sur la personne (son champ
+  // "info.1" vaut toujours 1, ce n'est pas un classId - piege verifie sur un evenement
+  // reel). Seul le classement par classe (field11, une liste chainee personId -> personId
+  // suivant) donne l'appartenance complete (classes ET coureurs non classes, la chaine
+  // couvre TOUS les inscrits, verifie 33/33 + 16/16 sur l'evenement de test).
+  const classOfPerson = {};
+  pbField(top, 11).forEach(it => {
+    const m = pbSub(it);
+    const classId = pbOne(m, 1) ? pbOne(m, 1).v : null;
+    const container = pbSub(pbOne(m, 2));
+    pbField(container, 1).forEach(e => {
+      const em = pbSub(e); const from = pbOne(em, 1) ? pbOne(em, 1).v : null;
+      if (from != null) classOfPerson[from] = classId;
+    });
+  });
+  const persons = {};
+  pbField(top, 7).forEach(it => {
+    const m = pbSub(it); const id = pbOne(m, 1) && pbOne(m, 1).v;
+    const info = pbSub(pbOne(m, 2));
+    if (id == null) return;
+    persons[id] = {
+      classId: classOfPerson[id] ?? null,
+      name: [pbStr(pbOne(info, 4)), pbStr(pbOne(info, 5))].join(" ").trim() || "?",
+      club: pbStr(pbOne(info, 20)),
+    };
+  });
+  const byClass = {};
+  pbField(top, 9).forEach(it => {
+    const m = pbSub(it); const pid = pbOne(m, 1) && pbOne(m, 1).v;
+    const person = persons[pid]; if (!person) return;
+    const rm = pbSub(pbOne(m, 2));
+    const legs = [];
+    pbField(rm, 1).forEach(se => {
+      const sm = pbSub(se); const seq = pbOne(sm, 1) ? pbOne(sm, 1).v : null;
+      if (!seq) return;
+      const d = pbSub(pbOne(sm, 2));
+      const sf = pbOne(d, 1), cf = pbOne(d, 2);
+      const split = sf ? sf.v / 1000 : null, cum = cf ? cf.v / 1000 : null;
+      legs[seq - 1] = { split: fmtSec(split), cum: fmtSec(cum), _split: split, _cum: cum, srank: null, crank: null };
+    });
+    const statusIt = pbField(rm, 3).pop();     // dernier champ 3 = statut global (4 = OK)
+    const status = statusIt ? statusIt.v : null;
+    for (let i = 0; i < legs.length; i++) if (!legs[i]) legs[i] = { split: "", cum: "", _split: null, _cum: null, srank: null, crank: null };
+    // Un poste isole sans donnee (statut 8) ne rend PAS le reste du parcours invalide :
+    // le temps du tronçon suivant absorbe simplement l'intervalle manque (verifie sur un
+    // coureur reel classe malgre un poste sans radio-controle) -> pas d'invalidateAfterMiss
+    // ici (contrairement a WinSplits/XML), seul le statut global fait foi pour le total.
+    const total = (status === 4 && legs.length) ? legs[legs.length - 1]._cum : null;
+    (byClass[person.classId] ||= []).push({ pos: "", name: person.name, club: person.club, finish: fmtSec(total), _total: total, diff: "", legs });
+  });
+  const classDefs = pbField(def, 7).map(it => {
+    const m = pbSub(it); const id = pbOne(m, 1) ? pbOne(m, 1).v : null;
+    return { id, name: pbStr(pbOne(pbSub(pbOne(m, 2)), 1)) || ("Class " + id) };
+  });
+  const categories = classDefs.map(c => {
+    const runners = byClass[c.id] || [];
+    const n = Math.max(0, ...runners.map(r => r.legs.length));
+    const legs = Array.from({ length: n }, (_, i) => i === n - 1 ? { label: "F", no: "F", code: "" } : { label: String(i + 1), no: String(i + 1), code: "" });
+    if (runners.length) rankAndDiff(runners, legs);
+    return { category: c.name, legs, runners };
+  }).filter(c => c.runners.length);
+  if (!categories.length) throw new Error("No result found in this event's data");
+  const meta = pbSub(pbOne(def, 1));
+  return { title: pbStr(pbOne(meta, 1)) || "SPORTident Center import", date: (pbStr(pbOne(meta, 2)) || "").slice(0, 10), categories, source: "file" };
+}
+async function loadSiUrl(url) {
+  $("#imp").classList.remove("show");
+  toast('<span class="spin"></span>Loading SPORTident Center event…', 8000);
+  try {
+    const slug = siParseUrl(url);
+    const evRes = await fetch("/api/si?op=event&slug=" + encodeURIComponent(slug));
+    const evCt = evRes.headers.get("content-type") || "";
+    const ev = evCt.includes("application/json") ? await evRes.json() : null;
+    if (!evRes.ok || !ev || ev.error) throw new Error((ev && ev.error) || "HTTP " + evRes.status);
+    if (!ev.hasPublishedResults) throw new Error("This event has no published results");
+    const binRes = await fetch("/api/si?op=bin&guid=" + encodeURIComponent(ev.guid));
+    if (!binRes.ok) throw new Error("HTTP " + binRes.status + " while fetching results data");
+    const bytes = new Uint8Array(await binRes.arrayBuffer());
+    const model = parseSiCenter(bytes);
+    model.title = ev.name || model.title;
+    model.date = ev.startDate || model.date;
+    const id = saveFileEvent(model);
+    openFileEvent({ id, payload: model });
+    toast("Imported: " + model.title);
+  } catch (e) { toast("❌ " + e.message, 4500); }
+}
+
 /* ============================ handlers import ============================ */
 $("#importBtn").onclick=()=>$("#imp").classList.add("show");
 $("#impClose").onclick=()=>$("#imp").classList.remove("show");
@@ -974,6 +1121,8 @@ drop.onclick=()=>file.click();
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
 drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
 file.onchange=()=>{if(file.files[0])handleFile(file.files[0]);};
+$("#siLoad").onclick=()=>{ const u=$("#siUrl").value.trim(); if(u) loadSiUrl(u); };
+$("#siUrl").onkeydown=(e)=>{ if(e.key==="Enter"){ const u=$("#siUrl").value.trim(); if(u) loadSiUrl(u); } };
 
 async function handleFile(f){
   $("#imp").classList.remove("show");
