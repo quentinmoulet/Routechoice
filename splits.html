@@ -110,8 +110,11 @@
   tbody tr:nth-child(even){background:var(--row2)}
   td.cpos,td.cname,td.crt{background:var(--row)}
   tbody tr:nth-child(even) td.cpos,tbody tr:nth-child(even) td.cname,tbody tr:nth-child(even) td.crt{background:var(--row2)}
-  tbody tr:hover{background:var(--hl)}
-  tbody tr:hover td.cpos,tbody tr:hover td.cname,tbody tr:hover td.crt{background:var(--hl)}
+  /* survol seulement avec une souris (au doigt, le :hover reste "collé" après un tap) */
+  @media (hover:hover){
+    tbody tr:hover{background:var(--hl)}
+    tbody tr:hover td.cpos,tbody tr:hover td.cname,tbody tr:hover td.crt{background:var(--hl)}
+  }
   tbody tr.sel{background:#dcebff}
   tbody tr.sel td.cpos,tbody tr.sel td.cname,tbody tr.sel td.crt{background:#dcebff}
   tbody tr.sel td{box-shadow:inset 0 0 0 9999px rgba(61,155,255,.10)}
@@ -126,7 +129,8 @@
   td.crt .sub{font-size:11px;color:var(--muted);font-weight:700}
 
   /* en-tête de poste : gros numéro, code dessous, PAS de soulignage */
-  th.leg{padding:5px 6px;border-bottom:2px solid var(--line);min-width:74px;cursor:ew-resize;user-select:none}
+  th.leg{padding:5px 6px;border-bottom:2px solid var(--line);min-width:74px;cursor:ew-resize;user-select:none;
+    -webkit-user-select:none;touch-action:none}   /* touch-action : le glisser au doigt sélectionne au lieu de défiler */
   /* section isolée (glisser sur les n° de poste) : surlignage orange clair */
   td.leg.secsel,th.leg.secsel{background:rgba(255,138,61,.16)}
   th.leg.secprev{background:rgba(255,138,61,.30)}
@@ -152,7 +156,7 @@
   /* coureurs épinglés : panneau séparé en bas, toujours visible, scroll
      horizontal synchronisé avec le tableau (le sticky tfoot ne tient pas
      une table haute) */
-  #pinbar{flex:0 0 auto;max-height:42%;overflow-x:auto;overflow-y:hidden;
+  #pinbar{flex:0 0 auto;max-height:42%;overflow-x:auto;overflow-y:auto;
     background:#fff8ee;border-top:2px solid var(--ac2);display:none}
   #pinbar.show{display:block}
   #pinbar::-webkit-scrollbar{display:none}
@@ -175,10 +179,35 @@
     td.cname .tot b{color:var(--ink)}
     th.cname,td.cname{min-width:56px;max-width:104px;padding:7px 7px}
     th.leg,td.leg{min-width:60px;padding:7px 5px}
-    /* graphique : légende empilée au-dessus du graphe */
-    .gbody{flex-direction:column}
-    .glegend{flex:0 0 auto;max-width:none;max-height:34%;border-right:0;border-bottom:1px solid var(--line)}
+    /* barre catégorie compacte : ligne 1 = ☰ + titre, ligne 2 = catégorie + boutons */
+    #subbar{gap:6px 8px;padding:6px 10px;align-items:center}
+    #subbar .title{flex:1 1 calc(100% - 60px);min-width:0;font-size:14px;margin:0;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #subbar .title small{display:none}
+    #subbar .field{flex:1 1 140px;min-width:0}
+    #subbar .field label,#pinhint{display:none}
+    #catsel{min-width:0;width:100%;padding:6px 8px}
+    #subbar button{padding:7px 10px}
   }
+
+  /* bulle d'info au tap (mobile : temps d'erreur) */
+  #tip{position:fixed;z-index:70;background:#1d2733;color:#fff;border-radius:9px;padding:7px 10px;
+    font-size:13px;font-weight:700;line-height:1.45;pointer-events:none;opacity:0;transition:opacity .15s;
+    white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
+  #tip.show{opacity:1}
+  #tip .e{color:#ff9fce}
+  #tip small{color:#aab6c3;font-weight:600}
+  /* graphique : réticule + infobulle au survol / au doigt */
+  .gchart{touch-action:none}
+  .gtip{position:absolute;top:28px;z-index:4;background:rgba(255,255,255,.96);border:1px solid var(--line);
+    border-radius:9px;padding:6px 8px;font-size:12px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.12);
+    pointer-events:none;font-variant-numeric:tabular-nums;display:none;max-width:70%}
+  .gtip.show{display:block}
+  .gtip .h{color:var(--muted);font-size:11px;margin-bottom:3px}
+  .gtip .r{display:flex;gap:6px;align-items:center;white-space:nowrap}
+  .gtip .r i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+  .gtip .r .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .gtip .r .sp{color:var(--muted);font-weight:600}
 
   /* import */
   #imp{display:none;position:fixed;inset:0;background:rgba(20,28,38,.45);z-index:50;align-items:center;justify-content:center}
@@ -214,6 +243,19 @@
   .lchip.on{color:var(--ink);border-color:var(--ac);background:var(--hl)}
   .lchip .p{color:var(--muted);font-weight:800;flex:0 0 auto;min-width:20px;text-align:right}
   .lchip .nm2{overflow:hidden;text-overflow:ellipsis}
+  /* mobile (APRÈS les règles de base du graphe, sinon elles l'emportent) :
+     légende compacte sur 2 colonnes au-dessus du graphe */
+  @media (max-width:640px){
+    .gbody{flex-direction:column}
+    .glegend{flex:0 0 auto;max-width:none;max-height:24vh;border-right:0;border-bottom:1px solid var(--line);
+      display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;gap:4px;padding:6px}
+    .lchip{padding:7px 7px;gap:5px;font-size:11.5px;min-width:0}
+    .lchip .sw{width:8px;height:8px}
+    .lchip .p{min-width:14px}
+    .gbar{padding:6px 10px;gap:6px}
+    .gbar .lbl{display:none}
+    .gbar button{padding:6px 10px;font-size:13px}
+  }
 </style>
 </head>
 <body>
@@ -272,6 +314,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="tip"></div>
 
 <script>
 /* ============================ état & utils ============================ */
@@ -607,7 +650,7 @@ function render(model){
     order=runners.map((_,i)=>i).sort((a,b)=>((secCum[a]?secCum[a].total:Infinity)-(secCum[b]?secCum[b].total:Infinity)));
     let rk=0,pv=null,n=0; order.forEach(i=>{ const v=secCum[i]?secCum[i].total:null; if(v==null){secPos[i]="";return;} n++; if(v!==pv){rk=n;pv=v;} secPos[i]=String(rk); });
   }
-  const sb=$("#secReset"); if(sb){ sb.style.display=secOn?"":"none"; if(secOn) sb.textContent="Section "+sectionRanges.map(([s,e])=>legs[s].no+"→"+legs[e].no).join(", ")+" ✕"; }
+  const sb=$("#secReset"); if(sb){ sb.style.display=secOn?"":"none"; if(secOn) sb.textContent="Section "+sectionRanges.map(([s,e])=>s===e?legs[s].no:legs[s].no+"→"+legs[e].no).join(", ")+" ✕"; }
 
   const head=`<thead><tr>
     <th class="cpos">#</th>
@@ -626,6 +669,8 @@ function render(model){
       const gs=gap(d._split,ref.bS[k]);
       const e=errInfo(d,k,idx), isE=!!e;
       let ttl=gs; if(isE) ttl=(gs?gs+"\n":"")+"Loss ~+"+fmtSec(e.lost);
+      // infos pour la bulle au tap (mobile) sur une erreur
+      const tipAttr=isE?` data-tip="${esc(`${legs[k].no}|${d.split||""}|${d.srank||""}|${gs}|+${fmtSec(e.lost)}`)}"`:"";
       // cumul : section (relatif) si actif, sinon normal
       let cumDiv;
       if(secOn){
@@ -639,7 +684,7 @@ function render(model){
         cumDiv=`<div class="cum ${rkText(cr)}"${gc?` title="${gc}"`:""}>${d.cum||""}${d.crank?`<span class="rk ${rkText(cr)}">${d.crank}</span>`:""}</div>`;
       }
       return `<td class="leg${secOn&&secCol.has(k)?" secsel":""}">
-        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${isE?" err":""}"${ttl?` title="${ttl}"`:""}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
+        <div class="split ${rkText(sr)} ${sr&&sr<=3?rkClass(sr):""}${isE?" err":""}"${ttl?` title="${ttl}"`:""}${tipAttr}>${d.split||"–"}${d.srank?`<span class="rk ${rkText(sr)}">${d.srank}</span>`:""}</div>
         ${cumDiv}
       </td>`;
     }).join("");
@@ -662,12 +707,11 @@ function render(model){
 
   const body="<tbody>"+order.map(i=>rowHtml(runners[i],i)).join("")+"</tbody>";
   wrap.innerHTML=`<table>${head}${body}</table>`;
-  // sélection de section : glisser sur les n° de poste (Ctrl = ajouter une 2e section)
-  const markPreview=()=>{ if(_dragStart==null)return; const lo=Math.min(_dragStart,_dragEnd),hi=Math.max(_dragStart,_dragEnd);
-    wrap.querySelectorAll("thead th.leg").forEach(t=>t.classList.toggle("secprev",+t.dataset.col>=lo&&+t.dataset.col<=hi)); };
+  // sélection de section : glisser sur les n° de poste, souris OU doigt (Ctrl = ajouter une 2e section)
   wrap.querySelectorAll("thead th.leg").forEach(th=>{
-    th.onmousedown=(ev)=>{ ev.preventDefault(); _dragStart=+th.dataset.col; _dragEnd=_dragStart; _dragCtrl=ev.ctrlKey||ev.metaKey; markPreview(); };
-    th.onmouseenter=()=>{ if(_dragStart==null)return; _dragEnd=+th.dataset.col; markPreview(); };
+    th.onpointerdown=(ev)=>{ if(ev.button>0) return; ev.preventDefault(); hideTip();
+      _dragStart=+th.dataset.col; _dragEnd=_dragStart; _dragCtrl=ev.ctrlKey||ev.metaKey;
+      _dragPt={x:ev.clientX,y:ev.clientY}; markSecPreview(); secAutoScroll(); };
   });
 
   // panneau des épinglés : table séparée sous le tableau (toujours visible),
@@ -681,12 +725,65 @@ function render(model){
     pinbar.classList.add("show"); pinbar.scrollLeft=wrap.scrollLeft;
   } else { pinbar.classList.remove("show"); pinbar.innerHTML=""; }
 
-  // clic sur une ligne (tableau OU panneau du bas) = épingler / désépingler
-  const toggle=i=>{ pinned.has(i)?pinned.delete(i):pinned.add(i); render(model); };
-  wrap.querySelectorAll("tbody tr").forEach(tr=>tr.onclick=()=>toggle(+tr.dataset.i));
-  pinbar.querySelectorAll("tbody tr").forEach(tr=>tr.onclick=()=>toggle(+tr.dataset.i));
-  wrap.onscroll=()=>{ if(pinbar.classList.contains("show")) pinbar.scrollLeft=wrap.scrollLeft; };
+  // clic sur une ligne (tableau OU panneau du bas) = épingler / désépingler ;
+  // au doigt, un tap sur une erreur affiche le temps perdu au lieu d'épingler.
+  const toggle=i=>{ hideTip(); pinned.has(i)?pinned.delete(i):pinned.add(i); render(model); };
+  const onRow=(tr,ev)=>{
+    const er=ev.target.closest(".split.err[data-tip]");
+    if(er && isTouch(ev)){ showErrTip(er); return; }
+    toggle(+tr.dataset.i);
+  };
+  wrap.querySelectorAll("tbody tr").forEach(tr=>tr.onclick=ev=>onRow(tr,ev));
+  pinbar.querySelectorAll("tbody tr").forEach(tr=>tr.onclick=ev=>onRow(tr,ev));
+  // scroll horizontal synchronisé dans les DEUX sens (au doigt on peut faire glisser le panneau du bas)
+  wrap.onscroll=()=>{ hideTip(); if(pinbar.classList.contains("show")&&Math.abs(pinbar.scrollLeft-wrap.scrollLeft)>1) pinbar.scrollLeft=wrap.scrollLeft; };
+  pinbar.onscroll=()=>{ hideTip(); if(Math.abs(pinbar.scrollLeft-wrap.scrollLeft)>1) wrap.scrollLeft=pinbar.scrollLeft; };
 }
+
+/* ---------- interactions tactiles : bulle d'erreur + glisser de section ---------- */
+// tap au doigt ? (pointerType si dispo, sinon écran sans survol)
+const isTouch=ev=>ev.pointerType?ev.pointerType!=="mouse":matchMedia("(hover:none)").matches;
+function hideTip(){ const t=$("#tip"); if(t) t.classList.remove("show"); }
+function showErrTip(el){
+  const [no,split,rk,gap,lost]=(el.dataset.tip||"").split("|");
+  const t=$("#tip");
+  t.innerHTML=`Leg ${esc(no)} · ${esc(split)}${rk?` <small>(${esc(rk)})</small>`:""}`+
+    `<br><span class="e">Mistake ≈ ${esc(lost)}</span>`+(gap?`<br><small>${esc(gap)} vs best split</small>`:"");
+  t.classList.add("show");
+  const r=el.getBoundingClientRect(), tw=t.offsetWidth, th=t.offsetHeight;
+  const x=Math.max(6,Math.min(innerWidth-tw-6, r.left+r.width/2-tw/2));
+  let y=r.top-th-8; if(y<6) y=r.bottom+8;
+  t.style.left=x+"px"; t.style.top=y+"px";
+  clearTimeout(showErrTip._); showErrTip._=setTimeout(hideTip,3500);
+}
+let _dragPt=null, _dragRaf=0;
+function markSecPreview(){
+  const lo=Math.min(_dragStart,_dragEnd), hi=Math.max(_dragStart,_dragEnd);
+  $$("#wrap thead th.leg").forEach(t=>t.classList.toggle("secprev",_dragStart!=null&&+t.dataset.col>=lo&&+t.dataset.col<=hi));
+}
+// poste sous le doigt/la souris (au doigt, les pointermove restent capturés par la 1re case)
+function secPick(){
+  if(!_dragPt) return;
+  const el=document.elementFromPoint(_dragPt.x,_dragPt.y), th=el&&el.closest("#wrap thead th.leg");
+  if(th && +th.dataset.col!==_dragEnd){ _dragEnd=+th.dataset.col; markSecPreview(); }
+}
+// défilement auto quand on glisse près du bord (sur mobile on ne voit que ~4 postes)
+function secAutoScroll(){
+  clearInterval(_dragRaf);
+  const step=()=>{
+    if(_dragStart==null){ clearInterval(_dragRaf); return; }
+    const wrap=$("#wrap"), r=wrap.getBoundingClientRect();
+    const nm=wrap.querySelector("thead th.cname"), rt=wrap.querySelector("thead th.crt");
+    const left=nm?nm.getBoundingClientRect().right:r.left;
+    const rr=rt&&rt.offsetWidth?rt.getBoundingClientRect().left:r.right;
+    const x=_dragPt.x; let v=0;
+    if(x>rr-36) v=Math.min(18,(x-(rr-36))/2+4); else if(x<left+36) v=-Math.min(18,((left+36)-x)/2+4);
+    if(v){ wrap.scrollLeft+=v; secPick(); }
+  };
+  _dragRaf=setInterval(step,20);
+}
+document.addEventListener("pointermove",ev=>{ if(_dragStart==null) return; _dragPt={x:ev.clientX,y:ev.clientY}; secPick(); });
+document.addEventListener("pointerdown",ev=>{ if(!ev.target.closest(".split.err")) hideTip(); });
 function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 // initiales (mobile) : 1re lettre du 1er + du dernier mot ("David von Koch" -> "DK")
 function initials(name){
@@ -724,6 +821,8 @@ function renderGraph(){
   }
   const behind=(r,k)=>{const d=r.legs[k]; if(!d||d._cum==null)return null;
     const ref=graphType==="leader"?leaderCum[k]:superCum[k]; return ref==null?null:d._cum-ref;};
+  // garde la position de défilement de la légende (sinon chaque clic la remet en haut)
+  const oldLeg=$("#glegend"), legScroll=oldLeg?oldLeg.scrollTop:0;
   // structure : légende À GAUCHE, graphe à droite
   $("#wrap").innerHTML=`<div id="graphview">
     <div class="gbar">
@@ -750,12 +849,48 @@ function renderGraph(){
     c.onclick=()=>{ graphSel.has(i)?graphSel.delete(i):graphSel.add(i); renderGraph(); };
     leg.appendChild(c);
   });
+  leg.scrollTop=legScroll;
   // tracé SVG (mesuré sur le conteneur)
-  const box=$("#gchart"), W=Math.max(360,box.clientWidth), H=Math.max(220,box.clientHeight);
-  box.innerHTML=buildGraphSvg(W,H,legs,runners,behind);
+  const box=$("#gchart"), W=Math.max(300,box.clientWidth), H=Math.max(200,box.clientHeight);
+  box.innerHTML=buildGraphSvg(W,H,legs,runners,behind)+`<div class="gtip" id="gtip"></div>`;
+  bindGraphCross(box,legs,runners);
+}
+// Réticule : au survol (souris) ou au doigt (tap / glisser), ligne verticale sur le poste
+// le plus proche + infobulle listant les coureurs affichés (retard + temps du tronçon).
+let _gGeom=null;
+function bindGraphCross(box,legs,runners){
+  const svg=box.querySelector("svg"), tip=box.querySelector("#gtip"), g=_gGeom;
+  if(!svg||!g) return;
+  const cross=svg.querySelector("#gcross"), line=cross.querySelector("line"), marks=cross.querySelector("g");
+  const E=esc;
+  const show=ev=>{
+    const pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY;
+    const p=pt.matrixTransform(svg.getScreenCTM().inverse());
+    // poste le plus proche (1..N ; le départ S n'a rien à montrer)
+    let k=1,bd=Infinity; for(let j=1;j<g.xs.length;j++){const dd=Math.abs(g.xs[j]-p.x); if(dd<bd){bd=dd;k=j;}}
+    const xx=g.xs[k];
+    line.setAttribute("x1",xx); line.setAttribute("x2",xx); cross.style.display="";
+    const rows=g.series.map(s=>({s,v:s.pts[k]})).filter(r=>r.v).sort((a,b)=>a.v.v-b.v.v);
+    marks.innerHTML=rows.map(r=>`<circle cx="${xx}" cy="${r.v.y.toFixed(1)}" r="4.5" fill="#fff" stroke="${r.s.color}" stroke-width="2.5"/>`).join("");
+    const lg=legs[k-1];
+    tip.innerHTML=`<div class="h">Control ${E(lg.no)}${lg.code?` · ${E(lg.code)}`:""}</div>`+
+      rows.map(r=>{const d=runners[r.s.i].legs[k-1]||{};
+        return `<div class="r"><i style="background:${r.s.color}"></i><span class="nm">${E(r.s.name)}</span>`+
+          `<span>+${fmtSec(r.v.v)}</span><span class="sp">${E(d.split||"")}</span></div>`;}).join("");
+    tip.classList.add("show");
+    // infobulle du côté opposé au réticule
+    const bx=box.getBoundingClientRect(), sx=bx.width/g.W, tipX=xx*sx;
+    tip.style.left=""; tip.style.right="";
+    if(tipX>bx.width/2) tip.style.left=Math.max(4,(g.L*sx)+4)+"px";
+    else tip.style.right=Math.max(4,(g.W-g.xEnd)*sx+4)+"px";
+  };
+  const hide=()=>{ cross.style.display="none"; tip.classList.remove("show"); };
+  box.onpointerdown=ev=>{ show(ev); };
+  box.onpointermove=ev=>{ if(ev.pointerType==="mouse"||ev.buttons) show(ev); };
+  box.onpointerleave=ev=>{ if(ev.pointerType==="mouse") hide(); };
 }
 function buildGraphSvg(W,H,legs,runners,behind){
-  const N=legs.length, L=50,R=40,Tp=24,B=20, pw=W-L-R, ph=H-Tp-B;   // R = colonne initiales
+  const N=legs.length, L=W<500?44:50,R=W<500?30:40,Tp=24,B=20, pw=W-L-R, ph=H-Tp-B;   // R = colonne initiales
   const xLabels=["S"].concat(legs.map(l=>l.no));
   // largeur de chaque tronçon PROPORTIONNELLE à son meilleur temps (split le plus rapide)
   const bestSplit=[]; for(let k=0;k<N;k++){let m=Infinity;runners.forEach(r=>{const d=r.legs[k];if(d&&d._split!=null)m=Math.min(m,d._split);});bestSplit[k]=isFinite(m)?m:null;}
@@ -778,31 +913,45 @@ function buildGraphSvg(W,H,legs,runners,behind){
     s+=`<line x1="${L}" y1="${yy}" x2="${xEnd.toFixed(1)}" y2="${yy}" stroke="#dde4ec" stroke-width="1"/>`;
     s+=`<text x="${L-6}" y="${(+yy+3).toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" fill="#6b7886">+${fmtSec(v)}</text>`;
   }
-  // grille verticale (proportionnelle) + numéros de poste (en haut)
+  // grille verticale (proportionnelle) + numéros de poste (en haut). Les numéros trop
+  // serrés (petit écran, tronçons courts) sont sautés ; le F est toujours affiché.
+  const lblW=t=>String(t).length*6.5+5, shown=[];
   for(let k=0;k<=N;k++){
-    const xx=x(k).toFixed(1);
-    s+=`<line x1="${xx}" y1="${Tp}" x2="${xx}" y2="${H-B}" stroke="#eef1f5" stroke-width="1"/>`;
-    s+=`<text x="${xx}" y="${Tp-7}" text-anchor="middle" font-size="11" font-weight="800" fill="#1d2733">${E(xLabels[k]||"")}</text>`;
+    const xx=x(k);
+    s+=`<line x1="${xx.toFixed(1)}" y1="${Tp}" x2="${xx.toFixed(1)}" y2="${H-B}" stroke="#eef1f5" stroke-width="1"/>`;
+    const t=xLabels[k]||"", last=shown[shown.length-1];
+    const fits=!last || xx-last.x>=(lblW(t)+lblW(last.t))/2;
+    if(k===N){ while(shown.length>1 && xx-shown[shown.length-1].x<(lblW(t)+lblW(shown[shown.length-1].t))/2) shown.pop(); shown.push({x:xx,t}); }
+    else if(fits) shown.push({x:xx,t});
   }
+  shown.forEach(l=>{ s+=`<text x="${l.x.toFixed(1)}" y="${Tp-7}" text-anchor="middle" font-size="11" font-weight="800" fill="#1d2733">${E(l.t)}</text>`; });
   // pas de ligne de référence rouge : le "0" est porté par les coureurs eux-mêmes.
-  // une polyligne par coureur (départ S à 0, puis chaque poste) + pastilles de survol
-  // + initiales de la couleur du coureur en bout de ligne (après le F), à droite.
+  // une polyligne par coureur (départ S à 0, puis chaque poste) + initiales de la
+  // couleur du coureur en bout de ligne (après le F), à droite, écartées si elles se chevauchent.
+  const series=[], ends=[];
   sel.forEach((i,idx)=>{
-    const st=gStyle(idx), nm=E(runners[i].name);
+    const st=gStyle(idx), nm=E(runners[i].name), pts=[{v:0,y:y(0)}];
     let d=`M${x(0).toFixed(1)} ${y(0).toFixed(1)} `, started=true, any=false, dots="", lastPy=y(0);
-    dots+=`<circle cx="${x(0).toFixed(1)}" cy="${y(0).toFixed(1)}" r="7" fill="transparent"><title>${nm}  +${fmtSec(0)}</title></circle>`;
     for(let k=0;k<N;k++){ const v=behind(runners[i],k);
-      if(v==null){started=false;continue;}
-      const px=x(k+1).toFixed(1), py=y(v); lastPy=py;
+      if(v==null){started=false;pts.push(null);continue;}
+      const px=x(k+1).toFixed(1), py=y(v); lastPy=py; pts.push({v,y:py});
       d+=(started?"L":"M")+px+" "+py.toFixed(1)+" "; started=true; any=true;
-      dots+=`<circle cx="${px}" cy="${py.toFixed(1)}" r="2.4" fill="${st.stroke}"/><circle cx="${px}" cy="${py.toFixed(1)}" r="7" fill="transparent"><title>${nm}  +${fmtSec(v)}</title></circle>`;
+      dots+=`<circle cx="${px}" cy="${py.toFixed(1)}" r="2.4" fill="${st.stroke}"/>`;
     }
     if(any){
       s+=`<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="2" ${st.dash?`stroke-dasharray="${st.dash}"`:""} stroke-linejoin="round"><title>${nm}</title></path>`+dots;
-      s+=`<text x="${(xEnd+4).toFixed(1)}" y="${(lastPy+3.5).toFixed(1)}" font-size="11" font-weight="800" fill="${st.stroke}">${E(initials(runners[i].name))}</text>`;
+      ends.push({y:lastPy, t:initials(runners[i].name), c:st.stroke});
+      series.push({i, name:runners[i].name, color:st.stroke, pts});
     }
   });
+  ends.sort((a,b)=>a.y-b.y);
+  for(let j=1;j<ends.length;j++) ends[j].y=Math.max(ends[j].y, ends[j-1].y+11);
+  for(let j=ends.length-1;j>=0;j--){ const lim=j===ends.length-1?H-4:ends[j+1].y-11; if(ends[j].y>lim) ends[j].y=lim; }
+  ends.forEach(e=>{ s+=`<text x="${(xEnd+4).toFixed(1)}" y="${(e.y+3.5).toFixed(1)}" font-size="11" font-weight="800" fill="${e.c}">${E(e.t)}</text>`; });
+  // réticule (masqué tant qu'on ne survole / touche pas le graphe)
+  s+=`<g id="gcross" style="display:none" pointer-events="none"><line y1="${Tp}" y2="${H-B}" stroke="#1d2733" stroke-width="1" stroke-dasharray="3 3" opacity=".55"/><g></g></g>`;
   s+=`</svg>`;
+  _gGeom={xs:Array.from({length:N+1},(_,k)=>x(k)), series, W, L, xEnd};
   return s;
 }
 
@@ -1143,15 +1292,20 @@ $("#cmpBtn").onclick=()=>{ compareMode=!compareMode; if(current&&current.model) 
 $("#graphBtn").onclick=()=>{ if(current&&current.model) toggleGraph(); };
 $("#secReset").onclick=()=>{ sectionRanges=[]; if(current&&current.model&&!graphMode) render(current.model); };
 $("#sideToggle").onclick=()=>$("#side").classList.toggle("hidden");
-// fin du glisser sur les n° de poste -> valide la section (clic simple = réinitialise)
-document.addEventListener("mouseup",()=>{
+// fin du glisser sur les n° de poste -> valide la section. Clic simple sur un n° = ce
+// tronçon seul comme section ; re-clic sur la même section d'un tronçon = réinitialise.
+const endSecDrag=()=>{
   if(_dragStart==null) return;
   const lo=Math.min(_dragStart,_dragEnd), hi=Math.max(_dragStart,_dragEnd), ctrl=_dragCtrl;
-  _dragStart=null;
-  if(lo===hi && !ctrl) sectionRanges=[];
+  _dragStart=null; clearInterval(_dragRaf);
+  if(lo===hi && !ctrl && sectionRanges.length===1 && sectionRanges[0][0]===lo && sectionRanges[0][1]===lo) sectionRanges=[];
   else sectionRanges = ctrl ? mergeRanges([...sectionRanges,[lo,hi]]) : [[lo,hi]];
   if(current&&current.model&&!graphMode) render(current.model);
-});
+};
+document.addEventListener("pointerup",endSecDrag);
+document.addEventListener("pointercancel",endSecDrag);
+// rotation / redimensionnement : redessine le graphe à la nouvelle taille
+let _rsz=0; addEventListener("resize",()=>{ clearTimeout(_rsz); _rsz=setTimeout(()=>{ if(graphMode) renderGraph(); },150); });
 $("#date").value=todayISO();
 $("#search").onclick=()=>$("#date").value&&searchEvents($("#date").value);
 $("#date").onchange=()=>$("#date").value&&searchEvents($("#date").value);
