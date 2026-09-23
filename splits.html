@@ -22,6 +22,9 @@
     background:var(--bg); color:var(--ink);
     font-family:"Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     display:flex; flex-direction:column; height:100vh; overflow:hidden;
+    /* dvh = hauteur VISIBLE : sur mobile, 100vh passe sous la barre du navigateur
+       (la dernière ligne épinglée et le bas du graphe étaient cachés dessous) */
+    height:100dvh;
   }
   a{color:var(--ac);text-decoration:none}
 
@@ -147,8 +150,8 @@
   .r2{color:var(--g2t)} .r2.bg{background:var(--g2)}
   .r3{color:var(--g3t)} .r3.bg{background:var(--g3)}
   td.leg .split.r1,td.leg .split.r2,td.leg .split.r3{border-radius:6px;padding:1px 3px}
-  /* rangs des TOTAUX : seulement la couleur du texte (jaune / gris / rouge) */
-  td.leg .cum.r1{color:#c08a00} td.leg .cum.r2{color:#67737f} td.leg .cum.r3{color:#e23b2e}
+  /* rangs des TOTAUX : seulement la couleur du texte (jaune / argent bleuté / rouge) */
+  td.leg .cum.r1{color:#c08a00} td.leg .cum.r2{color:#7f98b8} td.leg .cum.r3{color:#e23b2e}
   /* erreur : tronçon >20% au-dessus du niveau moyen du coureur (rouge-violet) */
   td.leg .split.err{border-radius:6px;padding:1px 3px;background:#f4d3e6;color:#9c1257;
     box-shadow:inset 0 0 0 1.5px #c0267a}
@@ -162,6 +165,9 @@
   #pinbar::-webkit-scrollbar{display:none}
   #pinbar{scrollbar-width:none}
   #pinbar td{border-bottom:1px solid #f0e6d4}
+  /* largeurs imposées par le <colgroup> mesuré sur l'en-tête : on neutralise les
+     min/max-width des cellules (sinon la colonne nom est plus étroite -> temps décalés) */
+  #pinbar td.cpos,#pinbar td.cname,#pinbar td.crt,#pinbar td.leg{min-width:0;max-width:none}
   #pinbar td.cpos,#pinbar td.cname,#pinbar td.crt{background:#fff8ee}
   /* mode comparaison actif */
   button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
@@ -247,7 +253,7 @@
      légende compacte sur 2 colonnes au-dessus du graphe */
   @media (max-width:640px){
     .gbody{flex-direction:column}
-    .glegend{flex:0 0 auto;max-width:none;max-height:24vh;border-right:0;border-bottom:1px solid var(--line);
+    .glegend{flex:0 0 auto;max-width:none;max-height:17vh;border-right:0;border-bottom:1px solid var(--line);
       display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;gap:4px;padding:6px}
     .lchip{padding:7px 7px;gap:5px;font-size:11.5px;min-width:0}
     .lchip .sw{width:8px;height:8px}
@@ -654,7 +660,7 @@ function render(model){
 
   const head=`<thead><tr>
     <th class="cpos">#</th>
-    <th class="cname" style="left:36px">Nom</th>
+    <th class="cname" style="left:36px">Name</th>
     ${legs.map((l,k)=>`<th class="leg${secOn&&secCol.has(k)?" secsel":""}" data-col="${k}"><div class="no">${l.no}</div>${l.code?`<div class="cd">${l.code}</div>`:""}</th>`).join("")}
     <th class="crt">Runner · total</th>
   </tr></thead>`;
@@ -721,8 +727,11 @@ function render(model){
   if(pinIdx.length){
     const cols=[...wrap.querySelectorAll("thead th")].map(th=>th.getBoundingClientRect().width);
     const colgroup="<colgroup>"+cols.map(w=>`<col style="width:${w.toFixed(1)}px">`).join("")+"</colgroup>";
-    pinbar.innerHTML=`<table style="table-layout:fixed">${colgroup}<tbody>${pinIdx.map(i=>rowHtml(runners[i],i,true)).join("")}</tbody></table>`;
-    pinbar.classList.add("show"); pinbar.scrollLeft=wrap.scrollLeft;
+    pinbar.innerHTML=`<table style="table-layout:fixed;width:${cols.reduce((a,b)=>a+b,0).toFixed(1)}px">${colgroup}<tbody>${pinIdx.map(i=>rowHtml(runners[i],i,true)).join("")}</tbody></table>`;
+    pinbar.classList.add("show");
+    // même largeur visible que le tableau (sa barre de défilement verticale décalait la colonne figée de droite)
+    pinbar.style.marginRight=(wrap.offsetWidth-wrap.clientWidth)+"px";
+    pinbar.scrollLeft=wrap.scrollLeft;
   } else { pinbar.classList.remove("show"); pinbar.innerHTML=""; }
 
   // clic sur une ligne (tableau OU panneau du bas) = épingler / désépingler ;
@@ -1292,13 +1301,23 @@ $("#cmpBtn").onclick=()=>{ compareMode=!compareMode; if(current&&current.model) 
 $("#graphBtn").onclick=()=>{ if(current&&current.model) toggleGraph(); };
 $("#secReset").onclick=()=>{ sectionRanges=[]; if(current&&current.model&&!graphMode) render(current.model); };
 $("#sideToggle").onclick=()=>$("#side").classList.toggle("hidden");
-// fin du glisser sur les n° de poste -> valide la section. Clic simple sur un n° = ce
-// tronçon seul comme section ; re-clic sur la même section d'un tronçon = réinitialise.
+// fin du glisser sur les n° de poste -> valide la section (un glisser remplace la section).
+// Clic simple sans section = ce tronçon seul ; avec une section = l'agrandit jusqu'au poste.
 const endSecDrag=()=>{
   if(_dragStart==null) return;
   const lo=Math.min(_dragStart,_dragEnd), hi=Math.max(_dragStart,_dragEnd), ctrl=_dragCtrl;
   _dragStart=null; clearInterval(_dragRaf);
-  if(lo===hi && !ctrl && sectionRanges.length===1 && sectionRanges[0][0]===lo && sectionRanges[0][1]===lo) sectionRanges=[];
+  if(lo===hi && !ctrl && sectionRanges.length){
+    // clic simple avec une section active : on AGRANDIT la section la plus proche
+    // jusqu'à ce poste (re-clic sur une section d'un seul tronçon = la retire)
+    const inR=sectionRanges.findIndex(([s,e])=>lo>=s&&lo<=e);
+    if(inR>=0){ const [s,e]=sectionRanges[inR]; if(s===e) sectionRanges=sectionRanges.filter((_,j)=>j!==inR); }
+    else {
+      const dist=([s,e])=>lo<s?s-lo:lo-e;
+      const near=sectionRanges.reduce((b,r)=>dist(r)<dist(b)?r:b);
+      sectionRanges=mergeRanges(sectionRanges.map(r=>r===near?[Math.min(r[0],lo),Math.max(r[1],lo)]:r));
+    }
+  }
   else sectionRanges = ctrl ? mergeRanges([...sectionRanges,[lo,hi]]) : [[lo,hi]];
   if(current&&current.model&&!graphMode) render(current.model);
 };
